@@ -169,15 +169,41 @@ function App() {
   }
 
   async function patchTask(id, patch) { const { error } = await supabase.from("tasks").update(patch).eq("id", id); if (error) alert(error.message); }
-  async function deleteTask(id) { if (confirm("Aufgabe wirklich löschen?")) await supabase.from("tasks").delete().eq("id", id); }
+  async function deleteTask(id) {
+    if (!confirm("Aufgabe wirklich löschen? Sie wird auch aus Backlog, Sprints, Verantwortlichkeiten, Kommentaren, Datei-Listen und Abhängigkeiten entfernt.")) return;
+
+    const { data: taskFiles } = await supabase
+      .from("task_files")
+      .select("storage_path")
+      .eq("task_id", id);
+
+    const storagePaths = (taskFiles || [])
+      .map(file => file.storage_path)
+      .filter(Boolean);
+
+    if (storagePaths.length) {
+      await supabase.storage.from("task-files").remove(storagePaths);
+    }
+
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) alert(error.message);
+  }
   async function moveTask(task, newStatus) {
     const check = canMoveTask(task, newStatus, profile, assigneesOf(task.id), depsOf(task.id));
     if (!check.ok) { alert(check.message); return; }
     await patchTask(task.id, { status: newStatus, backlog_status: newStatus === "Done" ? "Erledigt" : "Im Sprint" });
   }
   async function addTaskToSprint(taskId, sprintId) {
-    if (!sprintId) return;
-    await patchTask(taskId, { sprint_id: sprintId, backlog_status: "Im Sprint", status: "To Do" });
+    if (!sprintId) {
+      alert("Es gibt noch keinen aktuellen Sprint. Lege zuerst unter 'Sprints & Protokolle' einen Sprint an und setze ihn auf 'Aktiv'.");
+      return;
+    }
+    const { error } = await supabase
+      .from("tasks")
+      .update({ sprint_id: sprintId, backlog_status: "Im Sprint", status: "To Do" })
+      .eq("id", taskId);
+
+    if (error) alert(error.message);
   }
   async function removeTaskFromSprint(taskId) { await patchTask(taskId, { sprint_id: null, backlog_status: "Geplant", status: "Backlog" }); }
 
@@ -200,28 +226,69 @@ function App() {
     const { error } = await supabase.from("sprints").insert(sprintForm);
     if (error) alert(error.message); else setSprintForm(emptySprint());
   }
-  async function patchSprint(id, patch) { await supabase.from("sprints").update(patch).eq("id", id); }
+  async function patchSprint(id, patch) {
+    const { error } = await supabase.from("sprints").update(patch).eq("id", id);
+    if (error) alert(error.message);
+  }
+  async function deleteSprint(id) {
+    if (!confirm("Sprint wirklich löschen? Aufgaben aus diesem Sprint werden nicht gelöscht, sondern zurück ins Backlog gesetzt.")) return;
+
+    await supabase
+      .from("tasks")
+      .update({ sprint_id: null, backlog_status: "Geplant", status: "Backlog" })
+      .eq("sprint_id", id);
+
+    const { error } = await supabase.from("sprints").delete().eq("id", id);
+    if (error) alert(error.message);
+    else if (selectedSprintId === id) setSelectedSprintId("");
+  }
   async function addOrder(e) {
     e.preventDefault(); if (!orderForm.name.trim()) return;
     const { error } = await supabase.from("orders").insert({ ...orderForm, owner_id: orderForm.owner_id || profile?.id });
     if (error) alert(error.message); else setOrderForm(emptyOrder());
   }
-  async function patchOrder(id, patch) { await supabase.from("orders").update(patch).eq("id", id); }
+  async function patchOrder(id, patch) {
+    const { error } = await supabase.from("orders").update(patch).eq("id", id);
+    if (error) alert(error.message);
+  }
+  async function deleteOrder(id) {
+    if (!confirm("Bestellung wirklich löschen?")) return;
+    const { error } = await supabase.from("orders").delete().eq("id", id);
+    if (error) alert(error.message);
+  }
   async function addBlocker(e) {
     e.preventDefault(); if (!blockerForm.question.trim()) return;
     const { error } = await supabase.from("blockers").insert({ ...blockerForm, owner_id: profile?.id, status: "Offen", answer: "" });
     if (error) alert(error.message); else setBlockerForm(emptyBlocker());
   }
-  async function patchBlocker(id, patch) { await supabase.from("blockers").update(patch).eq("id", id); }
+  async function patchBlocker(id, patch) {
+    const { error } = await supabase.from("blockers").update(patch).eq("id", id);
+    if (error) alert(error.message);
+  }
+  async function deleteBlocker(id) {
+    if (!confirm("Frage / Blocker wirklich löschen?")) return;
+    const { error } = await supabase.from("blockers").delete().eq("id", id);
+    if (error) alert(error.message);
+  }
   async function addSchedule(e) {
     e.preventDefault(); if (!scheduleForm.title.trim()) return;
     const { error } = await supabase.from("schedule_items").insert({ profile_id: profile.id, task_id: scheduleForm.task_id || null, title: scheduleForm.title, start_date: scheduleForm.start_date, end_date: scheduleForm.end_date || null, notes: scheduleForm.notes });
     if (error) alert(error.message); else setScheduleForm(emptySchedule());
   }
+  async function deleteSchedule(id) {
+    if (!confirm("Zeitplan-Eintrag wirklich löschen?")) return;
+    const { error } = await supabase.from("schedule_items").delete().eq("id", id);
+    if (error) alert(error.message);
+  }
   async function addMeeting(e) {
     e.preventDefault(); if (!meetingForm.title.trim()) return;
     const { error } = await supabase.from("meetings").insert({ ...meetingForm, sprint_id: meetingForm.sprint_id || null, created_by: profile?.id });
     if (error) alert(error.message); else setMeetingForm(emptyMeeting());
+  }
+  async function deleteMeeting(id) {
+    if (!confirm("Meeting-Protokoll wirklich löschen?")) return;
+    const { error } = await supabase.from("meetings").delete().eq("id", id);
+    if (error) alert(error.message);
   }
   async function notifyMany(profileIds, title, body) {
     const rows = profileIds.filter(Boolean).map(profile_id => ({ profile_id, title, body }));
@@ -277,13 +344,13 @@ function App() {
       </nav>
 
       {tab === "dashboard" && <Dashboard activeSprint={activeSprint} tasks={tasks} sprintTasks={sprintTasks} overdueTasks={overdueTasks} orders={orders} blockers={blockers} currentLevel={currentLevel} plannedPoints={plannedPoints} />}
-      {tab === "backlog" && <Backlog tasks={backlogTasks} profiles={profiles} sprints={sprints} activeSprint={activeSprint} form={taskForm} setForm={setTaskForm} addTask={addTask} addTaskToSprint={addTaskToSprint} />}
+      {tab === "backlog" && <Backlog tasks={backlogTasks} profiles={profiles} sprints={sprints} activeSprint={activeSprint} form={taskForm} setForm={setTaskForm} addTask={addTask} addTaskToSprint={addTaskToSprint} deleteTask={deleteTask} />}
       {tab === "sprint" && <SprintBoard sprints={sprints} activeSprint={activeSprint} setSelectedSprintId={setSelectedSprintId} tasks={sprintTasks} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} removeTaskFromSprint={removeTaskFromSprint} />}
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} />}
-      {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
-      {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} nameOf={nameOf} />}
-      {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} nameOf={nameOf} />}
-      {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} meetings={meetings} />}
+      {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
+      {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} />}
+      {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} />}
+      {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} deleteMeeting={deleteMeeting} meetings={meetings} />}
       {tab === "gantt" && <Gantt tasks={tasks} />}
       {tab === "pm" && profile?.is_pm && <PmDashboard overdueTasks={overdueTasks} tasks={tasks} blockers={blockers} orders={orders} activeSprint={activeSprint} plannedPoints={plannedPoints} assigneesOf={assigneesOf} nameOf={nameOf} patchTask={patchTask} />}
     </main>
@@ -319,8 +386,8 @@ function Dashboard({activeSprint,tasks,sprintTasks,overdueTasks,orders,blockers,
   return <section className="grid two"><Card title="Projektstatus"><ul className="checkList"><li>Aktueller Sprint: {activeSprint?.name || "-"}</li><li>Sprintziel: {activeSprint?.goal || "-"}</li><li>Sprint-Aufgaben: {sprintTasks.length}</li><li>Erledigte Aufgaben gesamt: {tasks.filter(t=>t.status==="Done").length}</li><li>Team-Level: {currentLevel.title}</li><li>Story Points geplant: {plannedPoints}/{activeSprint?.capacity_points || 0}</li></ul></Card><Card title="Risiken"><ul className="checkList"><li>Überfällig: {overdueTasks.length}</li><li>Offene Bestellungen: {orders.filter(o=>o.status!=="Angekommen").length}</li><li>Offene Blocker: {blockers.filter(b=>b.status!=="Gelöst").length}</li></ul></Card></section>
 }
 
-function Backlog({tasks,profiles,sprints,activeSprint,form,setForm,addTask,addTaskToSprint}) {
-  return <section className="grid two"><Card title="Neue Backlog-Aufgabe"><TaskForm form={form} setForm={setForm} profiles={profiles} sprints={sprints} allTasks={tasks} submit={addTask}/></Card><div><h2>Backlog nach Priorität</h2><div className="taskList">{tasks.map(task=><div className="itemCard" key={task.id}><div className="row"><strong>{task.priority} · {task.title}</strong><button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>In aktuellen Sprint</button></div><p>{task.description}</p><p className="muted">{task.discipline} · {task.work_type} · {task.points} SP · Deadline {task.deadline || "offen"}</p></div>)}</div></div></section>
+function Backlog({tasks,profiles,sprints,activeSprint,form,setForm,addTask,addTaskToSprint,deleteTask}) {
+  return <section className="grid two"><Card title="Neue Backlog-Aufgabe"><TaskForm form={form} setForm={setForm} profiles={profiles} sprints={sprints} allTasks={tasks} submit={addTask}/></Card><div><h2>Backlog nach Priorität</h2><div className="taskList">{tasks.map(task=><div className="itemCard" key={task.id}><div className="row"><strong>{task.priority} · {task.title}</strong><div className="buttonRow"><button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>In aktuellen Sprint</button><button className="iconBtn" onClick={()=>deleteTask(task.id)} title="Aufgabe löschen"><Trash2 size={16}/></button></div></div><p>{task.description}</p><p className="muted">{task.discipline} · {task.work_type} · {task.points} SP · Deadline {task.deadline || "offen"}</p></div>)}</div></div></section>
 }
 
 function SprintBoard({sprints,activeSprint,setSelectedSprintId,tasks,profile,nameOf,assigneesOf,depsOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
@@ -331,20 +398,20 @@ function SprintHistory({sprints,tasks,meetings,setSelectedSprintId}) {
   return <section className="taskList">{sprints.map(s=>{const st=tasks.filter(t=>t.sprint_id===s.id); const done=st.filter(t=>t.status==="Done").length; return <div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><button className="secondary" onClick={()=>setSelectedSprintId(s.id)}>Öffnen</button></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · {s.status} · {done}/{st.length} erledigt</p><p><b>Protokolle:</b> {meetings.filter(m=>m.sprint_id===s.id).length}</p></div>})}</section>
 }
 
-function MyArea({profile,tasks,schedule,form,setForm,addSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
-  return <section className="grid two"><Card title="Mein Zeitplan"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/><div className="taskList">{schedule.map(s=><div className="itemCard" key={s.id}><strong>{s.title}</strong><p className="muted">{s.start_date}{s.end_date?` bis ${s.end_date}`:""}</p><p>{s.notes}</p></div>)}</div></Card><div><h2>Meine Aufgaben</h2><div className="taskList">{tasks.map(t=><TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile}/>)}</div></div></section>
+function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
+  return <section className="grid two"><Card title="Mein Zeitplan"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/><div className="taskList">{schedule.map(s=><div className="itemCard" key={s.id}><div className="row"><strong>{s.title}</strong><button className="iconBtn" onClick={()=>deleteSchedule(s.id)} title="Zeitplan löschen"><Trash2 size={16}/></button></div><p className="muted">{s.start_date}{s.end_date?` bis ${s.end_date}`:""}</p><p>{s.notes}</p></div>)}</div></Card><div><h2>Meine Aufgaben</h2><div className="taskList">{tasks.map(t=><TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile}/>)}</div></div></section>
 }
 
-function Orders({orders,profiles,form,setForm,addOrder,patchOrder,nameOf}) {
-  return <section className="grid two"><Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card><div className="taskList">{orders.map(o=><div className="itemCard" key={o.id}><div className="row"><strong>{o.name}</strong><select value={o.status} onChange={e=>patchOrder(o.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select></div><p>{o.description}</p><p className="muted">{o.shop} · {o.order_number} · {o.price} · {nameOf(o.owner_id)}</p>{o.supplier_link&&<a href={o.supplier_link} target="_blank">Link öffnen</a>}</div>)}</div></section>
+function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf}) {
+  return <section className="grid two"><Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card><div className="taskList">{orders.map(o=><div className="itemCard" key={o.id}><div className="row"><strong>{o.name}</strong><div className="buttonRow"><select value={o.status} onChange={e=>patchOrder(o.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select><button className="iconBtn" onClick={()=>deleteOrder(o.id)} title="Bestellung löschen"><Trash2 size={16}/></button></div></div><p>{o.description}</p><p className="muted">{o.shop} · {o.order_number} · {o.price} · {nameOf(o.owner_id)}</p>{o.supplier_link&&<a href={o.supplier_link} target="_blank">Link öffnen</a>}</div>)}</div></section>
 }
 
-function Blockers({blockers,form,setForm,addBlocker,patchBlocker,nameOf}) {
-  return <section className="grid two"><Card title="Blocker posten"><form className="form" onSubmit={addBlocker}><textarea placeholder="Problem" value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/><textarea placeholder="Schon versucht" value={form.tried} onChange={e=>setForm({...form,tried:e.target.value})}/><input placeholder="Hilfe benötigt von" value={form.needed_from} onChange={e=>setForm({...form,needed_from:e.target.value})}/><button className="primary"><HelpCircle size={18}/> Posten</button></form></Card><div className="taskList">{blockers.map(b=><div className="itemCard" key={b.id}><div className="row"><strong>{b.question}</strong><span className={b.status==="Gelöst"?"badge done":"badge danger"}>{b.status}</span></div><p>{b.tried}</p><textarea value={b.answer||""} onChange={e=>patchBlocker(b.id,{answer:e.target.value})}/><button className="secondary" onClick={()=>patchBlocker(b.id,{status:b.status==="Gelöst"?"Offen":"Gelöst"})}>Status wechseln</button></div>)}</div></section>
+function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,nameOf}) {
+  return <section className="grid two"><Card title="Blocker posten"><form className="form" onSubmit={addBlocker}><textarea placeholder="Problem" value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/><textarea placeholder="Schon versucht" value={form.tried} onChange={e=>setForm({...form,tried:e.target.value})}/><input placeholder="Hilfe benötigt von" value={form.needed_from} onChange={e=>setForm({...form,needed_from:e.target.value})}/><button className="primary"><HelpCircle size={18}/> Posten</button></form></Card><div className="taskList">{blockers.map(b=><div className="itemCard" key={b.id}><div className="row"><strong>{b.question}</strong><div className="buttonRow"><span className={b.status==="Gelöst"?"badge done":"badge danger"}>{b.status}</span><button className="iconBtn" onClick={()=>deleteBlocker(b.id)} title="Blocker löschen"><Trash2 size={16}/></button></div></div><p>{b.tried}</p><textarea value={b.answer||""} onChange={e=>patchBlocker(b.id,{answer:e.target.value})}/><button className="secondary" onClick={()=>patchBlocker(b.id,{status:b.status==="Gelöst"?"Offen":"Gelöst"})}>Status wechseln</button></div>)}</div></section>
 }
 
-function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,meetingForm,setMeetingForm,addMeeting,meetings}) {
-  return <section className="grid two"><div className="stack"><Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div><div className="stack"><h2>Sprints</h2>{sprints.map(s=><div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><select value={s.status} onChange={e=>patchSprint(s.id,{status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · Kapazität {s.capacity_points}</p></div>)}<h2>Protokolle</h2>{meetings.map(m=><div className="itemCard" key={m.id}><strong>{m.title}</strong><p className="muted">{m.meeting_type} · {m.meeting_date}</p><p><b>Entscheidungen:</b> {m.decisions}</p><p><b>Offen:</b> {m.open_points}</p><p><b>Nächste Schritte:</b> {m.next_steps}</p></div>)}</div></section>
+function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,deleteMeeting,meetings}) {
+  return <section className="grid two"><div className="stack"><Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div><div className="stack"><h2>Sprints</h2>{sprints.map(s=><div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><div className="buttonRow"><select value={s.status} onChange={e=>patchSprint(s.id,{status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select><button className="iconBtn" onClick={()=>deleteSprint(s.id)} title="Sprint löschen"><Trash2 size={16}/></button></div></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · Kapazität {s.capacity_points}</p></div>)}<h2>Protokolle</h2>{meetings.map(m=><div className="itemCard" key={m.id}><div className="row"><strong>{m.title}</strong><button className="iconBtn" onClick={()=>deleteMeeting(m.id)} title="Protokoll löschen"><Trash2 size={16}/></button></div><p className="muted">{m.meeting_type} · {m.meeting_date}</p><p><b>Entscheidungen:</b> {m.decisions}</p><p><b>Offen:</b> {m.open_points}</p><p><b>Nächste Schritte:</b> {m.next_steps}</p></div>)}</div></section>
 }
 
 function Gantt({tasks}) {
