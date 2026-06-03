@@ -86,3 +86,25 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* REAL v4 Fix: Monats-/Wochenkalender, Bearbeitung, Dateien, gelöste Fragen */
+.calendarShell { display: grid; gap: 12px; }
+.calendarToolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.calendarToolbar h2 { margin: 0; }
+.calendarGrid { display: grid; gap: 10px; margin-top: 10px; }
+.calendarGrid.month { grid-template-columns: repeat(7, minmax(120px, 1fr)); }
+.calendarGrid.week { grid-template-columns: repeat(7, minmax(160px, 1fr)); }
+.calendarDay { min-height: 145px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 18px; padding: 10px; }
+.calendarDate { font-weight: 900; margin-bottom: 8px; color: #111827; }
+.calendarPill { display: grid; gap: 3px; margin-bottom: 6px; padding: 7px; border-radius: 12px; background: #eef2ff; border: 1px solid #c7d2fe; font-size: 12px; }
+.calendarPill.sprint { background: #ecfdf5; border-color: #bbf7d0; }
+.calendarPill.schedule { background: #fff7ed; border-color: #fed7aa; }
+.calendarPill small { color: #6b7280; }
+.itemCard.resolved { opacity: 0.52; background: #f3f4f6; filter: grayscale(0.35); }
+.fileRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #f9fafb; border-radius: 12px; padding: 7px 9px; }
+.fileRow a { display: inline-flex; align-items: center; gap: 6px; }
+.miniDelete { border: 0; border-radius: 10px; background: #fee2e2; color: #991b1b; padding: 5px 7px; cursor: pointer; display: inline-flex; align-items: center; }
+@media (max-width: 900px) {
+  .calendarGrid.month, .calendarGrid.week { grid-template-columns: 1fr; }
+  .calendarDay { min-height: auto; }
+}

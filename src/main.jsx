@@ -321,9 +321,7 @@ function App() {
 
   async function deleteGenericFile(fileRow) {
     if (!confirm("Datei wirklich entfernen?")) return;
-    if (fileRow.storage_path) {
-      await supabase.storage.from("task-files").remove([fileRow.storage_path]);
-    }
+    if (fileRow.storage_path) await supabase.storage.from("task-files").remove([fileRow.storage_path]);
     const { error } = await supabase.from("generic_files").delete().eq("id", fileRow.id);
     if (error) alert(error.message);
   }
@@ -532,41 +530,18 @@ function SprintHistory({sprints,tasks,meetings,setSelectedSprintId}) {
 }
 
 function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
-  const personalItems = [
-    ...tasks.map(t => ({
-      id: `task-${t.id}`,
-      type: "Aufgabe",
-      title: t.title,
-      start: t.planned_start || t.deadline,
-      end: t.planned_end || t.deadline,
-      meta: `${t.priority} · ${t.status}`,
-    })).filter(item => item.start),
-    ...schedule.map(s => ({
-      id: `schedule-${s.id}`,
-      type: "Eigener Termin",
-      title: s.title,
-      start: s.start_date,
-      end: s.end_date || s.start_date,
-      meta: s.notes || "",
-      deleteId: s.id,
-    }))
-  ].sort((a,b) => String(a.start).localeCompare(String(b.start)));
-
   return <section className="grid two">
-    <Card title="Mein Kalender">
-      <ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/>
-      <div className="taskList">
-        {personalItems.length === 0 && <p className="empty">Noch keine eigenen Termine oder Aufgaben mit Datum.</p>}
-        {personalItems.map(item => <div className="itemCard" key={item.id}>
-          <div className="row">
-            <strong>{item.type}: {item.title}</strong>
-            {item.deleteId && <button className="iconBtn" onClick={()=>deleteSchedule(item.deleteId)} title="Termin löschen"><Trash2 size={16}/></button>}
-          </div>
-          <p className="muted">{item.start}{item.end && item.end !== item.start ? ` bis ${item.end}` : ""}</p>
-          <p>{item.meta}</p>
-        </div>)}
-      </div>
-    </Card>
+    <div className="stack">
+      <MyCalendar tasks={tasks} schedule={schedule} form={form} setForm={setForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule}/>
+      <Card title="Meine Termine als Liste">
+        <div className="taskList">
+          {schedule.map(s=><div className="itemCard" key={s.id}>
+            <div className="row"><strong>{s.title}</strong><button className="iconBtn" onClick={()=>deleteSchedule(s.id)} title="Zeitplan löschen"><Trash2 size={16}/></button></div>
+            <p className="muted">{s.start_date}{s.end_date?` bis ${s.end_date}`:""}</p><p>{s.notes}</p>
+          </div>)}
+        </div>
+      </Card>
+    </div>
     <div>
       <h2>Meine Aufgaben</h2>
       <p className="muted">Hier erscheinen Aufgaben, bei denen du Hauptverantwortliche/r oder zusätzlich verantwortlich bist.</p>
@@ -578,60 +553,23 @@ function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,
   </section>
 }
 
-function CalendarGrid({items}) {
-  const sorted = [...items].filter(i => i.start).sort((a,b)=>String(a.start).localeCompare(String(b.start)));
-  const grouped = sorted.reduce((acc, item) => {
-    const key = item.start;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(item);
-    return acc;
-  }, {});
-  return <div className="calendarGrid">
-    {Object.entries(grouped).map(([date, dayItems]) => <div className="calendarDay" key={date}>
-      <div className="calendarDate">{date}</div>
-      {dayItems.map(item => <div className={`calendarPill ${item.tone || "task"}`} key={item.id}>
-        <strong>{item.type}: {item.title}</strong>
-        <span>{item.end && item.end !== item.start ? `bis ${item.end}` : ""}</span>
-        <small>{item.meta}</small>
-        {item.deleteButton}
-      </div>)}
-    </div>)}
-  </div>
-}
-
 function TeamCalendar({sprints,tasks,schedule,nameOf}) {
   const items = [
-    ...sprints.map(s => ({ id:`sprint-${s.id}`, type:"Sprint", title:s.name, start:s.start_date, end:s.end_date, meta:s.goal, tone:"sprint" })),
+    ...sprints.map(s => ({ id:`sprint-${s.id}`, type:"Sprint", title:s.name, start:s.start_date, end:s.end_date || s.start_date, meta:s.goal || s.status, tone:"sprint" })),
     ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.discipline || t.area} · ${t.status} · ${t.priority}`, tone:"task" })),
     ...schedule.map(s => ({ id:`schedule-${s.id}`, type:"Termin", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:nameOf(s.profile_id), tone:"schedule" })),
-  ];
-  return <section className="card">
-    <h2>Team-Kalender</h2>
-    <p className="muted">Kalenderansicht für Sprint-Zeiträume, Team-Aufgaben und Termine.</p>
-    <CalendarGrid items={items}/>
-  </section>
+  ].filter(i=>i.start);
+  return <section className="card"><CalendarGrid items={items} title="Team-Kalender"/></section>
 }
 
 function MyCalendar({tasks,schedule,form,setForm,addSchedule,deleteSchedule}) {
   const items = [
     ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.status} · ${t.discipline || t.area}`, tone:"task" })),
-    ...schedule.map(s => ({
-      id:`schedule-${s.id}`,
-      type:"Eigener Termin",
-      title:s.title,
-      start:s.start_date,
-      end:s.end_date || s.start_date,
-      meta:s.notes || "",
-      tone:"schedule",
-      deleteButton:<button className="miniDelete" onClick={()=>deleteSchedule(s.id)}><Trash2 size={12}/></button>
-    })),
-  ];
+    ...schedule.map(s => ({ id:`schedule-${s.id}`, type:"Eigener Termin", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"schedule" })),
+  ].filter(i=>i.start);
   return <section className="grid two">
     <Card title="Eigenen Termin hinzufügen"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/></Card>
-    <Card title="Mein Kalender">
-      <p className="muted">Kalenderansicht für deine Aufgaben und eigenen Termine.</p>
-      <CalendarGrid items={items}/>
-    </Card>
+    <section className="card"><CalendarGrid items={items} title="Mein Kalender"/></section>
   </section>
 }
 
@@ -668,24 +606,50 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
   return <section className="grid two">
     <Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card>
     <div className="taskList">
-      {orders.map(o => {
-        const orderFiles = filesOfRecord("order", o.id);
-        return <div className="itemCard" key={o.id}>
-          <div className="row">
-            <strong>{o.name || o.item || "Bestellung"}</strong>
-            <div className="buttonRow">
-              <select value={o.status} onChange={e=>patchOrder(o.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
-              <button className="iconBtn" onClick={()=>deleteOrder(o.id)} title="Bestellung löschen"><Trash2 size={16}/></button>
-            </div>
-          </div>
-          <p>{o.description}</p>
-          <p className="muted">{o.shop} · {o.order_number} · {o.price} · {nameOf(o.owner_id)}</p>
-          {o.supplier_link&&<a href={o.supplier_link} target="_blank">Link öffnen</a>}
-          <FileBox title="Dateien zur Bestellung" files={orderFiles} onUpload={file=>uploadGenericFile("order", o.id, file)} onDelete={deleteGenericFile}/>
-        </div>
-      })}
+      {orders.map(o => <EditableOrder key={o.id} order={o} profiles={profiles} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} files={filesOfRecord("order", o.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
+}
+function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploadGenericFile,deleteGenericFile}) {
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState({...order});
+  async function save() {
+    await patchOrder(order.id, {
+      name: draft.name || draft.item || "",
+      description: draft.description || "",
+      shop: draft.shop || "",
+      order_number: draft.order_number || "",
+      quantity: draft.quantity || "1",
+      price: draft.price || "",
+      supplier_link: draft.supplier_link || "",
+      owner_id: draft.owner_id || null,
+      status: draft.status || "Benötigt"
+    });
+    setEditing(false);
+  }
+  return <div className="itemCard">
+    {!editing ? <>
+      <div className="row"><strong>{order.name || order.item || "Bestellung"}</strong><span className="badge">{order.status}</span></div>
+      <p>{order.description}</p>
+      <p className="muted">{order.shop} · {order.order_number} · {order.price} · {nameOf(order.owner_id)}</p>
+      {order.supplier_link&&<a href={order.supplier_link} target="_blank" rel="noreferrer">Link öffnen</a>}
+    </> : <div className="form">
+      <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Was muss bestellt werden?"/>
+      <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Beschreibung"/>
+      <input value={draft.shop || ""} onChange={e=>setDraft({...draft,shop:e.target.value})} placeholder="Shop"/>
+      <input value={draft.order_number || ""} onChange={e=>setDraft({...draft,order_number:e.target.value})} placeholder="Bestellnummer"/>
+      <input value={draft.supplier_link || ""} onChange={e=>setDraft({...draft,supplier_link:e.target.value})} placeholder="Link"/>
+      <div className="formRow"><input value={draft.quantity || ""} onChange={e=>setDraft({...draft,quantity:e.target.value})} placeholder="Menge"/><input value={draft.price || ""} onChange={e=>setDraft({...draft,price:e.target.value})} placeholder="Preis"/></div>
+      <select value={draft.owner_id || ""} onChange={e=>setDraft({...draft,owner_id:e.target.value})}><option value="">Verantwortlich</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
+      <select value={draft.status || "Benötigt"} onChange={e=>setDraft({...draft,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+    </div>}
+    <FileBox title="Dateien zur Bestellung" files={files} onUpload={file=>uploadGenericFile("order", order.id, file)} onDelete={deleteGenericFile}/>
+    <div className="buttonRow">
+      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button> : <><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></>}
+      <select value={order.status} onChange={e=>patchOrder(order.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+      <button className="iconBtn" onClick={()=>deleteOrder(order.id)} title="Bestellung löschen"><Trash2 size={16}/></button>
+    </div>
+  </div>
 }
 
 function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
@@ -703,66 +667,88 @@ function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,n
       </form>
     </Card>
     <div className="taskList">
-      {sortedBlockers.map(b => {
-        const blockerFiles = filesOfRecord("blocker", b.id);
-        return <div className={b.status === "Gelöst" ? "itemCard resolved" : "itemCard"} key={b.id}>
-          <div className="row">
-            <strong>{b.question}</strong>
-            <div className="buttonRow">
-              <select value={b.status || "Offen"} onChange={e=>patchBlocker(b.id,{status:e.target.value})}>
-                {["Offen","In Klärung","Gelöst"].map(status => <option key={status}>{status}</option>)}
-              </select>
-              <button className="iconBtn" onClick={()=>deleteBlocker(b.id)} title="Blocker löschen"><Trash2 size={16}/></button>
-            </div>
-          </div>
-          <p><b>Schon versucht:</b> {b.tried || "-"}</p>
-          <p><b>Hilfe von:</b> {b.needed_from || "-"}</p>
-          <label>Antwort / Lösung — jeder kann hier antworten</label>
-          <textarea value={b.answer || ""} onChange={e=>patchBlocker(b.id,{answer:e.target.value})} placeholder="Antwort oder Lösung ergänzen..."/>
-          <FileBox title="Dateien zur Frage" files={blockerFiles} onUpload={file=>uploadGenericFile("blocker", b.id, file)} onDelete={deleteGenericFile}/>
-        </div>
-      })}
+      {sortedBlockers.map(b => <EditableBlocker key={b.id} blocker={b} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} files={filesOfRecord("blocker", b.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
+}
+function EditableBlocker({blocker,patchBlocker,deleteBlocker,files,uploadGenericFile,deleteGenericFile}) {
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState({...blocker});
+  async function save() {
+    await patchBlocker(blocker.id, {
+      question: draft.question || "",
+      tried: draft.tried || "",
+      needed_from: draft.needed_from || "",
+      answer: draft.answer || "",
+      status: draft.status || "Offen"
+    });
+    setEditing(false);
+  }
+  return <div className={blocker.status === "Gelöst" ? "itemCard resolved" : "itemCard"}>
+    {!editing ? <>
+      <div className="row"><strong>{blocker.question}</strong><span className={blocker.status==="Gelöst"?"badge done":"badge danger"}>{blocker.status}</span></div>
+      <p><b>Schon versucht:</b> {blocker.tried || "-"}</p>
+      <p><b>Hilfe von:</b> {blocker.needed_from || "-"}</p>
+      <p><b>Antwort / Lösung:</b> {blocker.answer || "Noch keine Antwort"}</p>
+    </> : <div className="form">
+      <textarea value={draft.question || ""} onChange={e=>setDraft({...draft,question:e.target.value})} placeholder="Frage / Problem"/>
+      <textarea value={draft.tried || ""} onChange={e=>setDraft({...draft,tried:e.target.value})} placeholder="Schon versucht"/>
+      <input value={draft.needed_from || ""} onChange={e=>setDraft({...draft,needed_from:e.target.value})} placeholder="Hilfe benötigt von"/>
+      <textarea value={draft.answer || ""} onChange={e=>setDraft({...draft,answer:e.target.value})} placeholder="Antwort / Lösung — jeder kann hier antworten"/>
+      <select value={draft.status || "Offen"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Offen","In Klärung","Gelöst"].map(s=><option key={s}>{s}</option>)}</select>
+    </div>}
+    <FileBox title="Dateien zur Frage" files={files} onUpload={file=>uploadGenericFile("blocker", blocker.id, file)} onDelete={deleteGenericFile}/>
+    <div className="buttonRow">
+      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten / Antworten</button> : <><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></>}
+      <select value={blocker.status || "Offen"} onChange={e=>patchBlocker(blocker.id,{status:e.target.value})}>{["Offen","In Klärung","Gelöst"].map(s=><option key={s}>{s}</option>)}</select>
+      <button className="iconBtn" onClick={()=>deleteBlocker(blocker.id)} title="Blocker löschen"><Trash2 size={16}/></button>
+    </div>
+  </div>
 }
 
 function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,deleteMeeting,meetings,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
   return <section className="grid two">
-    <div className="stack">
-      <Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card>
-      <Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card>
-    </div>
+    <div className="stack"><Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
     <div className="stack">
       <h2>Sprints</h2>
-      {sprints.map(s => {
-        const sprintFiles = filesOfRecord("sprint", s.id);
-        return <div className="itemCard" key={s.id}>
-          <div className="row">
-            <strong>{s.name}</strong>
-            <div className="buttonRow">
-              <select value={s.status} onChange={e=>patchSprint(s.id,{status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select>
-              <button className="iconBtn" onClick={()=>deleteSprint(s.id)} title="Sprint löschen"><Trash2 size={16}/></button>
-            </div>
-          </div>
-          <p>{s.goal}</p>
-          <p className="muted">{s.start_date} bis {s.end_date} · Kapazität {s.capacity_points}</p>
-          <FileBox title="Dateien zum Sprint" files={sprintFiles} onUpload={file=>uploadGenericFile("sprint", s.id, file)} onDelete={deleteGenericFile}/>
-        </div>
-      })}
+      {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
       <h2>Protokolle</h2>
-      {meetings.map(m => {
-        const meetingFiles = filesOfRecord("meeting", m.id);
-        return <div className="itemCard" key={m.id}>
-          <div className="row"><strong>{m.title}</strong><button className="iconBtn" onClick={()=>deleteMeeting(m.id)} title="Protokoll löschen"><Trash2 size={16}/></button></div>
-          <p className="muted">{m.meeting_type} · {m.meeting_date}</p>
-          <p><b>Entscheidungen:</b> {m.decisions}</p>
-          <p><b>Offen:</b> {m.open_points}</p>
-          <p><b>Nächste Schritte:</b> {m.next_steps}</p>
-          <FileBox title="Dateien zum Protokoll" files={meetingFiles} onUpload={file=>uploadGenericFile("meeting", m.id, file)} onDelete={deleteGenericFile}/>
-        </div>
-      })}
+      {meetings.map(m => <EditableMeeting key={m.id} meeting={m} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
+}
+function EditableSprint({sprint,patchSprint,deleteSprint,files,uploadGenericFile,deleteGenericFile}) {
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState({...sprint});
+  async function save(){ await patchSprint(sprint.id, draft); setEditing(false); }
+  return <div className="itemCard">
+    {!editing ? <>
+      <div className="row"><strong>{sprint.name}</strong><span className="badge">{sprint.status}</span></div>
+      <p>{sprint.goal}</p><p className="muted">{sprint.start_date} bis {sprint.end_date} · Kapazität {sprint.capacity_points}</p>
+    </> : <div className="form">
+      <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})}/>
+      <textarea value={draft.goal || ""} onChange={e=>setDraft({...draft,goal:e.target.value})}/>
+      <div className="formRow"><input type="date" value={draft.start_date || ""} onChange={e=>setDraft({...draft,start_date:e.target.value})}/><input type="date" value={draft.end_date || ""} onChange={e=>setDraft({...draft,end_date:e.target.value})}/></div>
+      <input type="number" value={draft.capacity_points || 0} onChange={e=>setDraft({...draft,capacity_points:Number(e.target.value)})}/>
+      <select value={draft.status || "Geplant"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select>
+    </div>}
+    <FileBox title="Dateien zum Sprint" files={files} onUpload={file=>uploadGenericFile("sprint", sprint.id, file)} onDelete={deleteGenericFile}/>
+    <div className="buttonRow">
+      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button> : <><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></>}
+      <select value={sprint.status} onChange={e=>patchSprint(sprint.id,{status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select>
+      <button className="iconBtn" onClick={()=>deleteSprint(sprint.id)}><Trash2 size={16}/></button>
+    </div>
+  </div>
+}
+function EditableMeeting({meeting,deleteMeeting,files,uploadGenericFile,deleteGenericFile}) {
+  return <div className="itemCard">
+    <div className="row"><strong>{meeting.title}</strong><button className="iconBtn" onClick={()=>deleteMeeting(meeting.id)} title="Protokoll löschen"><Trash2 size={16}/></button></div>
+    <p className="muted">{meeting.meeting_type} · {meeting.meeting_date}</p>
+    <p><b>Entscheidungen:</b> {meeting.decisions}</p>
+    <p><b>Offen:</b> {meeting.open_points}</p>
+    <p><b>Nächste Schritte:</b> {meeting.next_steps}</p>
+    <FileBox title="Dateien zum Protokoll" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
+  </div>
 }
 
 function Gantt({tasks}) {
@@ -779,19 +765,83 @@ function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
 }
 
 function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
-  const [comment,setComment]=useState(""); const taskAssignees=assigneesOf(task.id); const canDelete=true; const deps=depsOf(task.id);
-  return <div className={task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done"?"taskCard overdue":"taskCard"}><div className="row"><strong>{task.priority} · {task.title}</strong><span className="badge">{task.points} SP</span></div><p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"offen"}</p><p className="muted">Verantwortlich: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p><p>{task.description}</p>{deps.length>0&&<p className="muted"><GitBranch size={14}/> Abhängig von: {deps.map(d=>d.title).join(", ")}</p>}<label>Evidence / Review-Doku</label><input value={task.evidence||""} onChange={e=>patchTask(task.id,{evidence:e.target.value})}/><div className="miniSection"><h4><Paperclip size={15}/> Dateien</h4><input type="file" onChange={e=>uploadTaskFile(task.id,e.target.files?.[0])}/>{files.map(f=><a key={f.id} href={f.file_url} target="_blank"><LinkIcon size={14}/> {f.file_name}</a>)}</div><div className="miniSection"><h4><MessageCircle size={15}/> Kommentare</h4>{comments.map(c=><p key={c.id} className="comment"><b>{nameOf(c.profile_id)}:</b> {c.body}</p>)}<div className="formRow"><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Kommentar"/><button type="button" className="secondary" onClick={()=>addComment(task.id,comment,()=>setComment(""))}>Senden</button></div></div><div className="row"><select value={task.status} onChange={e=>moveTask(task,e.target.value)}>{sprintColumns.map(c=><option key={c}>{c}</option>)}</select><div className="buttonRow">{removeTaskFromSprint&&<button className="secondary" onClick={()=>removeTaskFromSprint(task.id)}>Zurück ins Backlog</button>}{canDelete&&<button className="iconBtn" onClick={()=>deleteTask(task.id)}><Trash2 size={16}/></button>}</div></div></div>
+  const [comment,setComment]=useState("");
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState({
+    title: task.title || "",
+    description: task.description || "",
+    priority: task.priority || "P3",
+    discipline: task.discipline || task.area || "Software",
+    work_type: task.work_type || "Organisation",
+    deadline: task.deadline || "",
+    points: task.points || 1,
+    planned_start: task.planned_start || "",
+    planned_end: task.planned_end || "",
+    done_definition: task.done_definition || "",
+    evidence: task.evidence || ""
+  });
+  const taskAssignees=assigneesOf(task.id);
+  const canDelete=true;
+  const deps=depsOf(task.id);
+  async function saveEdit() {
+    await patchTask(task.id, {
+      ...draft,
+      area: draft.discipline,
+      points: Number(draft.points || 1),
+      deadline: draft.deadline || null,
+      planned_start: draft.planned_start || null,
+      planned_end: draft.planned_end || null,
+    });
+    setEditing(false);
+  }
+  return <div className={task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done"?"taskCard overdue":"taskCard"}>
+    {!editing ? <>
+      <div className="row"><strong>{task.priority} · {task.title}</strong><span className="badge">{task.points} SP</span></div>
+      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"offen"}</p>
+      <p className="muted">Verantwortlich: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p>
+      <p>{task.description}</p>
+      {deps.length>0&&<p className="muted"><GitBranch size={14}/> Abhängig von: {deps.map(d=>d.title).join(", ")}</p>}
+      <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
+      <p><b>Evidence / Review-Doku:</b> {task.evidence || "-"}</p>
+    </> : <div className="form">
+      <input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/>
+      <textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/>
+      <div className="formRow">
+        <select value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select>
+        <input type="number" min="1" value={draft.points} onChange={e=>setDraft({...draft,points:e.target.value})}/>
+      </div>
+      <select value={draft.discipline} onChange={e=>setDraft({...draft,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select>
+      <select value={draft.work_type} onChange={e=>setDraft({...draft,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select>
+      <div className="formRow">
+        <input type="date" value={draft.planned_start} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/>
+        <input type="date" value={draft.planned_end} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/>
+      </div>
+      <input type="date" value={draft.deadline} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
+      <textarea placeholder="Definition of Done" value={draft.done_definition} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
+      <textarea placeholder="Evidence / Review-Doku" value={draft.evidence} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
+      <div className="buttonRow"><button className="primary" type="button" onClick={saveEdit}>Speichern</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button></div>
+    </div>}
+    <div className="miniSection"><h4><Paperclip size={15}/> Dateien</h4><input type="file" onChange={e=>uploadTaskFile(task.id,e.target.files?.[0])}/>{files.map(f=><a key={f.id} href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>)}</div>
+    <div className="miniSection"><h4><MessageCircle size={15}/> Kommentare</h4>{comments.map(c=><p key={c.id} className="comment"><b>{nameOf(c.profile_id)}:</b> {c.body}</p>)}<div className="formRow"><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Kommentar"/><button type="button" className="secondary" onClick={()=>addComment(task.id,comment,()=>setComment(""))}>Senden</button></div></div>
+    <div className="row">
+      <select value={task.status} onChange={e=>moveTask(task,e.target.value)}>{sprintColumns.map(c=><option key={c}>{c}</option>)}</select>
+      <div className="buttonRow">
+        <button className="secondary" type="button" onClick={()=>setEditing(!editing)}>Bearbeiten</button>
+        {removeTaskFromSprint&&<button className="secondary" onClick={()=>removeTaskFromSprint(task.id)}>Zurück ins Backlog</button>}
+        {canDelete&&<button className="iconBtn" onClick={()=>deleteTask(task.id)}><Trash2 size={16}/></button>}
+      </div>
+    </div>
+  </div>
 }
-
 
 function FileBox({title,files,onUpload,onDelete}) {
   return <div className="miniSection">
     <h4><Paperclip size={15}/> {title}</h4>
     <input type="file" onChange={e=>onUpload(e.target.files?.[0])}/>
-    {files.length === 0 && <p className="muted">Noch keine Dateien.</p>}
-    {files.map(f => <div className="fileRow" key={f.id}>
+    {files?.length === 0 && <p className="muted">Noch keine Dateien.</p>}
+    {files?.map(f => <div className="fileRow" key={f.id}>
       <a href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>
-      <button className="miniDelete" onClick={()=>onDelete(f)}><Trash2 size={12}/></button>
+      <button className="miniDelete" type="button" onClick={()=>onDelete(f)}><Trash2 size={12}/></button>
     </div>)}
   </div>
 }
