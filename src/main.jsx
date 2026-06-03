@@ -566,7 +566,112 @@ function Dashboard({activeSprint,tasks,sprintTasks,overdueTasks,orders,blockers,
 }
 
 function Backlog({tasks,profiles,sprints,activeSprint,form,setForm,addTask,addTaskToSprint,deleteTask}) {
-  return <section className="grid two"><Card title="Neue Backlog-Aufgabe"><TaskForm form={form} setForm={setForm} profiles={profiles} sprints={sprints} allTasks={tasks} submit={addTask}/></Card><div><h2>Backlog nach Priorität</h2><div className="taskList">{tasks.map(task=><div className="itemCard" key={task.id}><div className="row"><strong>{task.priority} · {task.title}</strong><div className="buttonRow"><button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>In aktuellen Sprint</button><button className="iconBtn" onClick={()=>deleteTask(task.id)} title="Aufgabe löschen"><Trash2 size={16}/></button></div></div><p>{task.description}</p><p className="muted">{task.discipline} · {task.work_type} · {task.points} SP · Deadline {task.deadline || "offen"}</p></div>)}</div></div></section>
+  return <section className="grid two">
+    <Card title="Neue Backlog-Aufgabe">
+      <TaskForm form={form} setForm={setForm} profiles={profiles} sprints={sprints} allTasks={tasks} submit={addTask}/>
+    </Card>
+    <div>
+      <h2>Backlog nach Priorität</h2>
+      <div className="taskList">
+        {tasks.map(task=>
+          <BacklogTaskCard
+            key={task.id}
+            task={task}
+            profiles={profiles}
+            activeSprint={activeSprint}
+            addTaskToSprint={addTaskToSprint}
+            deleteTask={deleteTask}
+          />
+        )}
+      </div>
+    </div>
+  </section>
+}
+
+function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}) {
+  const [editing,setEditing] = useState(false);
+  const [draft,setDraft] = useState({
+    title: task.title || "",
+    description: task.description || "",
+    owner_id: task.owner_id || "",
+    priority: task.priority || "P3",
+    discipline: task.discipline || task.area || "Software",
+    work_type: task.work_type || "Organisation",
+    points: task.points || 3,
+    deadline: task.deadline || "",
+    planned_start: task.planned_start || "",
+    planned_end: task.planned_end || "",
+    done_definition: task.done_definition || "",
+    evidence: task.evidence || ""
+  });
+
+  async function saveBacklogTask() {
+    const { error } = await supabase.from("tasks").update({
+      title: draft.title,
+      description: draft.description,
+      owner_id: draft.owner_id || null,
+      priority: draft.priority,
+      area: draft.discipline,
+      discipline: draft.discipline,
+      work_type: draft.work_type,
+      points: Number(draft.points || 3),
+      deadline: draft.deadline || null,
+      planned_start: draft.planned_start || null,
+      planned_end: draft.planned_end || null,
+      done_definition: draft.done_definition,
+      evidence: draft.evidence
+    }).eq("id", task.id);
+
+    if (error) alert(error.message);
+    else setEditing(false);
+  }
+
+  return <div className="itemCard">
+    {!editing ? <>
+      <div className="row">
+        <strong>{task.priority} · {task.title}</strong>
+        <div className="buttonRow">
+          <button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>In aktuellen Sprint</button>
+          <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button>
+          <button className="iconBtn" onClick={()=>deleteTask(task.id)} title="Aufgabe löschen"><Trash2 size={16}/></button>
+        </div>
+      </div>
+      <p>{task.description}</p>
+      <p className="muted">{task.discipline} · {task.work_type} · {task.points} SP · Deadline {task.deadline || "offen"}</p>
+    </> : <div className="form">
+      <input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Titel"/>
+      <textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Beschreibung"/>
+      <select value={draft.owner_id} onChange={e=>setDraft({...draft,owner_id:e.target.value})}>
+        <option value="">Hauptverantwortliche/r</option>
+        {profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}
+      </select>
+      <div className="formRow">
+        <select value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value})}>
+          {priorities.map(p=><option key={p}>{p}</option>)}
+        </select>
+        <select value={draft.points} onChange={e=>setDraft({...draft,points:Number(e.target.value)})}>
+          {storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}
+        </select>
+      </div>
+      <select value={draft.discipline} onChange={e=>setDraft({...draft,discipline:e.target.value})}>
+        {disciplines.map(d=><option key={d}>{d}</option>)}
+      </select>
+      <select value={draft.work_type} onChange={e=>setDraft({...draft,work_type:e.target.value})}>
+        {workTypes.map(w=><option key={w}>{w}</option>)}
+      </select>
+      <div className="formRow">
+        <input type="date" value={draft.planned_start || ""} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/>
+        <input type="date" value={draft.planned_end || ""} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/>
+      </div>
+      <input type="date" value={draft.deadline || ""} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
+      <textarea placeholder="Definition of Done" value={draft.done_definition || ""} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
+      <textarea placeholder="Evidence / Review-Doku" value={draft.evidence || ""} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
+      <div className="buttonRow">
+        <button className="primary" type="button" onClick={saveBacklogTask}>Speichern</button>
+        <button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button>
+      </div>
+    </div>}
+  </div>
 }
 
 function SprintBoard({sprints,activeSprint,setSelectedSprintId,tasks,profile,nameOf,assigneesOf,depsOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
