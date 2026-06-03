@@ -15,6 +15,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const sprintColumns = ["To Do", "Doing", "Review", "Done"];
 const priorities = ["P1", "P2", "P3", "P4"];
+const storyPointOptions = [1, 2, 3, 5, 8, 13];
 const disciplines = ["Software", "Systems Engineering", "Electronics", "Mechanics", "Testing", "Manufacturing", "Dokumentation", "Project Management"];
 const areaOptions = [
   { value: "Project Management", label: "Project Management" },
@@ -423,7 +424,7 @@ function App() {
     <main className="page loginPage">
       <section className="loginCard">
         <div className="brandCircle"><Rocket /></div>
-        <h1>ADMM Team Planner v4</h1>
+        <h1>ADMM Team Planner</h1>
         <p className="muted">Finale Version mit Backlog, Sprint-System, Historie, Uploads und PM-Dashboard.</p>
         <div className="switch"><button className={authMode === "signin" ? "active" : ""} onClick={() => setAuthMode("signin")}>Einloggen</button><button className={authMode === "signup" ? "active" : ""} onClick={() => setAuthMode("signup")}>Registrieren</button></div>
         <form className="form" onSubmit={authMode === "signin" ? signIn : signUp}>
@@ -450,7 +451,7 @@ function App() {
   return (
     <main className="page">
       <header className="topbar">
-        <div><p className="eyebrow">ADMM Team Planner v4</p><h1>Backlog · Sprints · PM-Übersicht</h1><p className="muted">Aktueller Sprint: {activeSprint?.name || "Noch kein Sprint"} · Ziel: {activeSprint?.goal || "Noch kein Ziel"}</p></div>
+        <div><p className="eyebrow">ADMM Team Planner</p><h1>Backlog · Sprints · PM-Übersicht</h1><p className="muted">Aktueller Sprint: {activeSprint?.name || "Noch kein Sprint"} · Ziel: {activeSprint?.goal || "Noch kein Ziel"}</p></div>
         <div className="userBox"><strong>{profile?.display_name || session.user.email}</strong><span>{profile?.role} · {displayArea(profile?.area)}</span><span>{unreadNotifications.length} neue Hinweise</span><button className="secondary" onClick={signOut}><LogOut size={16}/> Logout</button></div>
       </header>
 
@@ -467,7 +468,7 @@ function App() {
       </section>
 
       <nav className="tabs">
-        {["dashboard","backlog","sprint","history","me","calendar","myCalendar","area","orders","blockers","meetings","gantt"].map(id => (
+        {["dashboard","backlog","sprint","history","me","calendar","area","orders","blockers","meetings","gantt"].map(id => (
           <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
             {id === "area" ? `${displayArea(profile?.area)}-Übersicht` : labelForTab(id)}
           </button>
@@ -480,8 +481,7 @@ function App() {
       {tab === "sprint" && <SprintBoard sprints={sprints} activeSprint={activeSprint} setSelectedSprintId={setSelectedSprintId} tasks={sprintTasks} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} removeTaskFromSprint={removeTaskFromSprint} />}
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} />}
       {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
-      {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} nameOf={nameOf} />}
-      {tab === "myCalendar" && <MyCalendar tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+      {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} profiles={profiles} assigneesOf={assigneesOf} nameOf={nameOf} />}
       {tab === "area" && <AreaDashboard area={displayArea(profile?.area)} tasks={areaTasks(profile?.area)} blockers={blockers} orders={orders} activeSprint={activeSprint} />}
       {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
@@ -493,9 +493,53 @@ function App() {
 }
 
 function labelForTab(id) {
-  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Aktueller Sprint", history:"Sprint-Historie", me:"Mein Bereich", orders:"Bestellungen", blockers:"Fragen & Blocker", calendar:"Team-Kalender", myCalendar:"Mein Kalender", area:"Bereichs-Übersicht", meetings:"Sprints & Protokolle", gantt:"Gantt"})[id];
+  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Aktueller Sprint", history:"Sprint-Historie", me:"Mein Bereich", orders:"Bestellungen", blockers:"Fragen & Blocker", calendar:"Team-Kalender", area:"Bereichs-Übersicht", meetings:"Sprints & Protokolle", gantt:"Gantt"})[id];
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
+function parsePriceValue(value) {
+  if (value === null || value === undefined) return 0;
+  const cleaned = String(value).replace("€", "").replace(/\s/g, "").replace(",", ".");
+  const number = Number.parseFloat(cleaned);
+  return Number.isFinite(number) ? number : 0;
+}
+function formatEuro(value) {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value || 0);
+}
+function downloadOrdersCsv(orders, nameOf) {
+  const header = ["Teil", "Beschreibung", "Lieferant/Shop", "Bestellnummer", "Menge", "Einzelpreis", "Gesamtpreis", "Status", "Verantwortlich", "Link"];
+  const rows = orders.map(o => {
+    const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
+    const unitPrice = parsePriceValue(o.price);
+    return [
+      o.name || "",
+      o.description || "",
+      o.shop || "",
+      o.order_number || "",
+      o.quantity || "1",
+      o.price || "",
+      formatEuro(unitPrice * quantity),
+      o.status || "",
+      nameOf(o.owner_id),
+      o.supplier_link || ""
+    ];
+  });
+  const csv = [header, ...rows]
+    .map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(";"))
+    .join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "admm_bestellungen.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function personTone(profileId, profiles = []) {
+  const index = Math.max(0, profiles.findIndex(p => p.id === profileId));
+  return `person-${(index % 10) + 1}`;
+}
 function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() - new Date(dateString)) / (1000*60*60*24))); }
 function canMoveTask(task, newStatus, profile, taskAssignees, deps) {
   if (!profile) return { ok: false, message: "Bitte einloggen." };
@@ -645,13 +689,38 @@ function CalendarGrid({ items, title }) {
   </div>
 }
 
-function TeamCalendar({sprints,tasks,schedule,nameOf}) {
+function TeamCalendar({sprints,tasks,profiles,assigneesOf,nameOf}) {
   const items = [
-    ...sprints.map(s => ({ id:`sprint-${s.id}`, type:"Sprint", title:s.name, start:s.start_date, end:s.end_date || s.start_date, meta:s.goal || s.status, tone:"sprint" })),
-    ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.discipline || t.area} · ${t.status} · ${t.priority}`, tone:"task" })),
-    ...schedule.map(s => ({ id:`schedule-${s.id}`, type:"Termin", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:nameOf(s.profile_id), tone:"schedule" })),
+    ...sprints.map(s => ({
+      id:`sprint-${s.id}`,
+      type:"Sprint",
+      title:s.name,
+      start:s.start_date,
+      end:s.end_date || s.start_date,
+      meta:s.goal || s.status,
+      tone:"sprint"
+    })),
+    ...tasks.map(t => {
+      const assigned = assigneesOf(t.id);
+      const ownerId = assigned[0]?.id || t.owner_id;
+      return {
+        id:`task-${t.id}`,
+        type:"Aufgabe",
+        title:t.title,
+        start:t.planned_start || t.deadline,
+        end:t.planned_end || t.deadline,
+        meta:`${nameOf(ownerId)} · ${t.discipline || t.area} · ${t.status} · ${t.priority}`,
+        tone: personTone(ownerId, profiles)
+      };
+    }),
   ].filter(i=>i.start);
-  return <section className="card"><CalendarGrid items={items} title="Team-Kalender"/></section>
+
+  return <section className="card">
+    <CalendarGrid items={items} title="Team-Kalender"/>
+    <div className="personLegend">
+      {profiles.map(p => <span key={p.id} className={`legendChip ${personTone(p.id, profiles)}`}>{p.display_name}</span>)}
+    </div>
+  </section>
 }
 
 function MyCalendar({tasks,schedule,form,setForm,addSchedule,deleteSchedule}) {
@@ -695,14 +764,56 @@ function AreaDashboard({area,tasks,blockers,orders,activeSprint}) {
 }
 
 function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
+  const totalPrice = orders.reduce((sum,o)=>{
+    const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
+    return sum + parsePriceValue(o.price) * quantity;
+  }, 0);
+
   return <section className="grid two">
-    <Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card>
+    <Card title="Bestellung hinzufügen">
+      <OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/>
+      <div className="priceSummary">
+        <strong>Gesamtpreis aller Bestellungen</strong>
+        <span>{formatEuro(totalPrice)}</span>
+      </div>
+      <button className="secondary" type="button" onClick={()=>downloadOrdersCsv(orders, nameOf)}>
+        Excel-Liste exportieren
+      </button>
+    </Card>
     <div className="taskList">
+      <div className="ordersTableWrap">
+        <table className="ordersTable">
+          <thead>
+            <tr>
+              <th>Teil</th>
+              <th>Menge</th>
+              <th>Einzelpreis</th>
+              <th>Gesamt</th>
+              <th>Status</th>
+              <th>Verantwortlich</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map(o => {
+              const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
+              const unitPrice = parsePriceValue(o.price);
+              return <tr key={o.id}>
+                <td>{o.name || "Bestellung"}</td>
+                <td>{o.quantity || "1"}</td>
+                <td>{formatEuro(unitPrice)}</td>
+                <td>{formatEuro(unitPrice * quantity)}</td>
+                <td>{o.status}</td>
+                <td>{nameOf(o.owner_id)}</td>
+              </tr>
+            })}
+          </tbody>
+        </table>
+      </div>
       {orders.map(o => <EditableOrder key={o.id} order={o} profiles={profiles} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} files={filesOfRecord("order", o.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
 }
-function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploadGenericFile,deleteGenericFile}) {
+function EditableOrderfunction EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploadGenericFile,deleteGenericFile}) {
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...order});
   async function save() {
@@ -723,7 +834,7 @@ function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploa
     {!editing ? <>
       <div className="row"><strong>{order.name || order.item || "Bestellung"}</strong><span className="badge">{order.status}</span></div>
       <p>{order.description}</p>
-      <p className="muted">{order.shop} · {order.order_number} · {order.price} · {nameOf(order.owner_id)}</p>
+      <p className="muted">{order.shop} · {order.order_number} · Menge {order.quantity || "1"} · Einzelpreis {order.price || "-"} · Gesamt {formatEuro(parsePriceValue(order.price) * (Number.parseFloat(String(order.quantity || "1").replace(",", ".")) || 1))} · {nameOf(order.owner_id)}</p>
       {order.supplier_link&&<a href={order.supplier_link} target="_blank" rel="noreferrer">Link öffnen</a>}
     </> : <div className="form">
       <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Was muss bestellt werden?"/>
@@ -897,7 +1008,7 @@ function PmDashboard({overdueTasks,tasks,blockers,orders,activeSprint,plannedPoi
 
 function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
   function toggle(listName,id){const exists=form[listName].includes(id); setForm({...form,[listName]:exists?form[listName].filter(x=>x!==id):[...form[listName],id]})}
-  return <form className="form" onSubmit={submit}><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Beschreibung" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Hauptverantwortliche/r</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Weitere Verantwortliche</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/><input type="date" value={form.planned_end} onChange={e=>setForm({...form,planned_end:e.target.value})}/></div><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/><input type="number" min="1" value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}/><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Abhängigkeiten</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><button className="primary"><Plus size={18}/> Aufgabe erstellen</button></form>
+  return <form className="form" onSubmit={submit}><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Beschreibung" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Hauptverantwortliche/r</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Weitere Verantwortliche</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/><input type="date" value={form.planned_end} onChange={e=>setForm({...form,planned_end:e.target.value})}/></div><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Abhängigkeiten</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><button className="primary"><Plus size={18}/> Aufgabe erstellen</button></form>
 }
 
 function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
@@ -944,7 +1055,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
       <textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/>
       <div className="formRow">
         <select value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select>
-        <input type="number" min="1" value={draft.points} onChange={e=>setDraft({...draft,points:e.target.value})}/>
+        <select value={draft.points} onChange={e=>setDraft({...draft,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select>
       </div>
       <select value={draft.discipline} onChange={e=>setDraft({...draft,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select>
       <select value={draft.work_type} onChange={e=>setDraft({...draft,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select>

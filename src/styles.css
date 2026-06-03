@@ -279,3 +279,68 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Bestellungen: Tabelle, Preisrechner und Export */
+.priceSummary {
+  margin: 14px 0;
+  padding: 14px;
+  border-radius: 18px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 18px;
+}
+
+.ordersTableWrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: white;
+  margin-bottom: 16px;
+}
+
+.ordersTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.ordersTable th,
+.ordersTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+.ordersTable th {
+  background: #f9fafb;
+  font-weight: 900;
+}
+
+/* Team-Kalender: feste Farbe pro Person */
+.personLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.legendChip {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.calendarPill.person-1, .legendChip.person-1 { background: #dbeafe; border-color: #93c5fd; }
+.calendarPill.person-2, .legendChip.person-2 { background: #dcfce7; border-color: #86efac; }
+.calendarPill.person-3, .legendChip.person-3 { background: #fef3c7; border-color: #fcd34d; }
+.calendarPill.person-4, .legendChip.person-4 { background: #fce7f3; border-color: #f9a8d4; }
+.calendarPill.person-5, .legendChip.person-5 { background: #ede9fe; border-color: #c4b5fd; }
+.calendarPill.person-6, .legendChip.person-6 { background: #cffafe; border-color: #67e8f9; }
+.calendarPill.person-7, .legendChip.person-7 { background: #ffedd5; border-color: #fdba74; }
+.calendarPill.person-8, .legendChip.person-8 { background: #e0f2fe; border-color: #7dd3fc; }
+.calendarPill.person-9, .legendChip.person-9 { background: #f3e8ff; border-color: #d8b4fe; }
+.calendarPill.person-10, .legendChip.person-10 { background: #ccfbf1; border-color: #5eead4; }
