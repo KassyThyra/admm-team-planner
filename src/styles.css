@@ -225,3 +225,57 @@
     min-height: auto;
   }
 }
+
+/* Fix: Kalender darf sich nicht mit "Meine Aufgaben" überschneiden */
+.calendarShell {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.calendarGrid {
+  width: 100%;
+  min-width: 0;
+}
+
+.calendarGrid.month,
+.calendarGrid.week {
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+}
+
+.calendarDay {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.calendarPill {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Mein Bereich soll untereinander statt nebeneinander laufen, wenn Kalender sichtbar ist */
+.page .grid.two:has(.calendarShell) {
+  grid-template-columns: 1fr;
+}
+
+/* Formular und Kalender sauber trennen */
+.page .grid.two:has(.calendarShell) > * {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Mobile / kleine Bildschirme */
+@media (max-width: 1100px) {
+  .calendarGrid.month,
+  .calendarGrid.week {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .calendarGrid.month,
+  .calendarGrid.week {
+    grid-template-columns: 1fr;
+  }
+}
