@@ -15,7 +15,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const sprintColumns = ["To Do", "Doing", "Review", "Done"];
 const priorities = ["P1", "P2", "P3", "P4"];
-const disciplines = ["Software", "Electronics", "Mechanics", "Project Management"];
+const disciplines = ["Software", "Systems Engineering", "Electronics", "Mechanics", "Testing", "Manufacturing", "Dokumentation", "Project Management"];
 const workTypes = ["Organisation", "Bestellung", "Testing", "Manufacturing / Bauen", "Recherche", "Dokumentation", "Integration", "Meeting / Abstimmung", "Fehlerbehebung", "Design / Konstruktion", "Review / Freigabe"];
 const orderStatus = ["Benötigt", "Bestellt", "Versendet", "Angekommen"];
 const meetingTypes = ["Sprint Planning", "Weekly", "Sprint Review", "Retrospective", "Extra Meeting"];
@@ -309,7 +309,7 @@ function App() {
           {authMode === "signup" && <>
             <input placeholder="Name" value={authForm.displayName} onChange={e => setAuthForm({ ...authForm, displayName: e.target.value })} />
             <input placeholder="Rolle" value={authForm.role} onChange={e => setAuthForm({ ...authForm, role: e.target.value })} />
-            <select value={authForm.area} onChange={e => setAuthForm({ ...authForm, area: e.target.value })}>{["PM", "ME", "EE", "SW"].map(a => <option key={a}>{a}</option>)}</select>
+            <select value={authForm.area} onChange={e => setAuthForm({ ...authForm, area: e.target.value })}>{["PM", "SE", "ME", "EE", "SW", "TEST", "MFG", "DOC"].map(a => <option key={a}>{a}</option>)}</select>
           </>}
           <input placeholder="E-Mail" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} />
           <input placeholder="Passwort" type="password" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} />
