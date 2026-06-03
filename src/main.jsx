@@ -37,6 +37,22 @@ const roleOptions = [
   "Documentation",
   "Team Member",
 ];
+const roleAreaMap = {
+  "Project Manager": "Project Management",
+  "Systems Engineer": "Systems Engineering",
+  "Software Developer": "Software",
+  "Software Engineer": "Software",
+  "Electronics Developer": "Electronics",
+  "Electronics Engineer": "Electronics",
+  "Mechanical Developer": "Mechanics",
+  "Mechanical Engineer": "Mechanics",
+  "Test Engineer": "Testing",
+  "Manufacturing": "Manufacturing",
+  "Documentation": "Dokumentation",
+  "Team Member": "Project Management",
+};
+function roleToArea(role) { return roleAreaMap[role] || "Project Management"; }
+function roleToIsPm(role) { return role === "Project Manager"; }
 const workTypes = ["Organisation", "Bestellung", "Testing", "Manufacturing / Bauen", "Recherche", "Dokumentation", "Integration", "Meeting / Abstimmung", "Fehlerbehebung", "Design / Konstruktion", "Review / Freigabe"];
 const orderStatus = ["Benötigt", "Bestellt", "Versendet", "Angekommen"];
 const meetingTypes = ["Sprint Planning", "Weekly", "Sprint Review", "Retrospective", "Extra Meeting"];
@@ -68,7 +84,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
   const [authMode, setAuthMode] = useState("signin");
-  const [authForm, setAuthForm] = useState({ email: "", password: "", displayName: "", role: "Team Member", area: "Mechanics" });
+  const [authForm, setAuthForm] = useState({ email: "", password: "", displayName: "", role: "Software Developer", area: "Software" });
   const [taskForm, setTaskForm] = useState(emptyTask());
   const [sprintForm, setSprintForm] = useState(emptySprint());
   const [orderForm, setOrderForm] = useState(emptyOrder());
@@ -116,9 +132,19 @@ function App() {
     ]);
     if (!profileRes.data) {
       const fallbackName = session.user.email?.split("@")[0] || "Teammitglied";
-      const insert = await supabase.from("profiles").insert({ id: session.user.id, display_name: fallbackName, role: "Team Member", area: "Mechanics", is_pm: false }).select().single();
+      const insert = await supabase.from("profiles").insert({ id: session.user.id, display_name: fallbackName, role: "Software Developer", area: "Software", is_pm: false }).select().single();
       setProfile(insert.data);
-    } else setProfile(profileRes.data);
+    } else {
+      const expectedArea = roleToArea(profileRes.data.role);
+      const normalizedStoredArea = normalizeArea(profileRes.data.area);
+      if (expectedArea && normalizedStoredArea !== expectedArea && profileRes.data.role !== "Team Member") {
+        const fixedProfile = { ...profileRes.data, area: expectedArea, is_pm: roleToIsPm(profileRes.data.role) };
+        setProfile(fixedProfile);
+        await supabase.from("profiles").update({ area: expectedArea, is_pm: roleToIsPm(profileRes.data.role) }).eq("id", profileRes.data.id);
+      } else {
+        setProfile({ ...profileRes.data, area: normalizedStoredArea });
+      }
+    }
     setProfiles(profilesRes.data || []); setTasks(tasksRes.data || []); setSprints(sprintsRes.data || []);
     setAssignees(assigneesRes.data || []); setDependencies(depsRes.data || []); setComments(commentsRes.data || []);
     setFiles(filesRes.data || []); setOrders(ordersRes.data || []); setBlockers(blockersRes.data || []);
@@ -136,7 +162,7 @@ function App() {
     if (data.user) {
       await supabase.from("profiles").insert({
         id: data.user.id, display_name: authForm.displayName || authForm.email.split("@")[0],
-        role: authForm.role, area: authForm.area, is_pm: false
+        role: authForm.role, area: authForm.area || roleToArea(authForm.role), is_pm: roleToIsPm(authForm.role)
       });
       setMessage("Account erstellt. Jetzt einloggen.");
       setAuthMode("signin");
@@ -365,7 +391,10 @@ function App() {
         <form className="form" onSubmit={authMode === "signin" ? signIn : signUp}>
           {authMode === "signup" && <>
             <input placeholder="Name" value={authForm.displayName} onChange={e => setAuthForm({ ...authForm, displayName: e.target.value })} />
-            <select value={authForm.role} onChange={e => setAuthForm({ ...authForm, role: e.target.value })}>
+            <select value={authForm.role} onChange={e => {
+              const nextRole = e.target.value;
+              setAuthForm({ ...authForm, role: nextRole, area: roleToArea(nextRole) });
+            }}>
               {roleOptions.map(role => <option key={role} value={role}>{role}</option>)}
             </select>
             <select value={authForm.area} onChange={e => setAuthForm({ ...authForm, area: e.target.value })}>
@@ -400,7 +429,7 @@ function App() {
       </section>
 
       <nav className="tabs">
-        {["dashboard","backlog","sprint","history","me","calendar","area","orders","blockers","meetings","gantt"].map(id => (
+        {["dashboard","backlog","sprint","history","me","calendar","myCalendar","area","orders","blockers","meetings","gantt"].map(id => (
           <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
             {id === "area" ? `${displayArea(profile?.area)}-Übersicht` : labelForTab(id)}
           </button>
@@ -414,6 +443,7 @@ function App() {
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} />}
       {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
       {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} nameOf={nameOf} />}
+      {tab === "myCalendar" && <MyCalendar tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
       {tab === "area" && <AreaDashboard area={displayArea(profile?.area)} tasks={areaTasks(profile?.area)} blockers={blockers} orders={orders} activeSprint={activeSprint} />}
       {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} />}
@@ -425,7 +455,7 @@ function App() {
 }
 
 function labelForTab(id) {
-  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Aktueller Sprint", history:"Sprint-Historie", me:"Mein Bereich", orders:"Bestellungen", blockers:"Fragen & Blocker", calendar:"Team-Kalender", area:"Bereichs-Übersicht", meetings:"Sprints & Protokolle", gantt:"Gantt"})[id];
+  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Aktueller Sprint", history:"Sprint-Historie", me:"Mein Bereich", orders:"Bestellungen", blockers:"Fragen & Blocker", calendar:"Team-Kalender", myCalendar:"Mein Kalender", area:"Bereichs-Übersicht", meetings:"Sprints & Protokolle", gantt:"Gantt"})[id];
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() - new Date(dateString)) / (1000*60*60*24))); }
@@ -560,6 +590,29 @@ function TeamCalendar({sprints,tasks,schedule,nameOf}) {
         <li><b>Aufgabe</b>: Aufgabe mit Start/Ende oder Deadline</li>
         <li><b>Termin</b>: persönlicher oder Team-Termin</li>
       </ul>
+    </Card>
+  </section>
+}
+
+function MyCalendar({tasks,schedule,form,setForm,addSchedule,deleteSchedule}) {
+  const taskItems = tasks.filter(t => t.planned_start || t.deadline).map(t => ({
+    id: `task-${t.id}`, type: "Aufgabe", title: t.title, start: t.planned_start || t.deadline, end: t.planned_end || t.deadline, meta: `${t.status} · ${t.discipline || t.area}`
+  }));
+  const scheduleItems = schedule.map(s => ({
+    id: `schedule-${s.id}`, type: "Eigener Termin", title: s.title, start: s.start_date, end: s.end_date || s.start_date, meta: s.notes || "", scheduleId: s.id
+  }));
+  const items = [...taskItems, ...scheduleItems].filter(i=>i.start).sort((a,b)=>String(a.start).localeCompare(String(b.start)));
+  return <section className="grid two">
+    <Card title="Eigenen Termin hinzufügen"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/></Card>
+    <Card title="Mein Kalender">
+      <div className="taskList">
+        {items.length === 0 && <p className="empty">Noch keine Termine oder datierten Aufgaben.</p>}
+        {items.map(item => <div className={`itemCard calendarItem ${item.type === "Eigener Termin" ? "schedule" : "task"}`} key={item.id}>
+          <div className="row"><strong>{item.type}: {item.title}</strong>{item.scheduleId && <button className="iconBtn" onClick={()=>deleteSchedule(item.scheduleId)}><Trash2 size={16}/></button>}</div>
+          <p className="muted">{item.start}{item.end && item.end !== item.start ? ` → ${item.end}` : ""}</p>
+          <p>{item.meta}</p>
+        </div>)}
+      </div>
     </Card>
   </section>
 }
