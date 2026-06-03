@@ -813,7 +813,7 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
     </div>
   </section>
 }
-function EditableOrderfunction EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploadGenericFile,deleteGenericFile}) {
+function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploadGenericFile,deleteGenericFile}) {
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...order});
   async function save() {
