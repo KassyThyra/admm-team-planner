@@ -81,8 +81,9 @@ function App() {
   const [schedule, setSchedule] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [genericFiles, setGenericFiles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(() => localStorage.getItem("admm-active-tab") || "dashboard");
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "", displayName: "", role: "Software Developer", area: "Software" });
   const [taskForm, setTaskForm] = useState(emptyTask());
@@ -104,18 +105,24 @@ function App() {
   }, [isConfigured]);
 
   useEffect(() => {
+    localStorage.setItem("admm-active-tab", tab);
+  }, [tab]);
+
+  useEffect(() => {
     if (!session?.user) return;
     loadAll();
     const channel = supabase
       .channel("admm-v4")
-      .on("postgres_changes", { event: "*", schema: "public" }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public" }, () => {
+        loadAll();
+      })
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [session?.user?.id]);
 
   async function loadAll() {
     if (!session?.user) return;
-    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes] = await Promise.all([
+    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes, genericFilesRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
       supabase.from("profiles").select("*").order("created_at", { ascending: true }),
       supabase.from("tasks").select("*").order("priority", { ascending: true }).order("created_at", { ascending: false }),
@@ -129,6 +136,7 @@ function App() {
       supabase.from("schedule_items").select("*").order("start_date", { ascending: true }),
       supabase.from("meetings").select("*").order("meeting_date", { ascending: false }),
       supabase.from("notifications").select("*").order("created_at", { ascending: false }),
+      supabase.from("generic_files").select("*").order("created_at", { ascending: false }),
     ]);
     if (!profileRes.data) {
       const fallbackName = session.user.email?.split("@")[0] || "Teammitglied";
@@ -148,7 +156,7 @@ function App() {
     setProfiles(profilesRes.data || []); setTasks(tasksRes.data || []); setSprints(sprintsRes.data || []);
     setAssignees(assigneesRes.data || []); setDependencies(depsRes.data || []); setComments(commentsRes.data || []);
     setFiles(filesRes.data || []); setOrders(ordersRes.data || []); setBlockers(blockersRes.data || []);
-    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []);
+    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []);
     if (!selectedSprintId) {
       const active = (sprintsRes.data || []).find(s => s.status === "Aktiv") || (sprintsRes.data || [])[0];
       if (active) setSelectedSprintId(active.id);
@@ -193,6 +201,7 @@ function App() {
   function commentsOf(taskId) { return comments.filter(c => c.task_id === taskId); }
   function filesOf(taskId) { return files.filter(f => f.task_id === taskId); }
   function depsOf(taskId) { return dependencies.filter(d => d.task_id === taskId).map(d => tasks.find(t => t.id === d.depends_on_task_id)).filter(Boolean); }
+  function filesOfRecord(recordType, recordId) { return genericFiles.filter(f => f.record_type === recordType && f.record_id === recordId); }
   function normalizeArea(value) {
     const map = {
       PM: "Project Management",
@@ -290,6 +299,33 @@ function App() {
     if (uploadError) { alert(uploadError.message); return; }
     const { data } = supabase.storage.from("task-files").getPublicUrl(path);
     await supabase.from("task_files").insert({ task_id: taskId, profile_id: profile?.id, file_name: file.name, file_url: data.publicUrl, storage_path: path });
+  }
+
+  async function uploadGenericFile(recordType, recordId, file) {
+    if (!file || !recordId) return;
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${recordType}/${recordId}/${Date.now()}_${safeName}`;
+    const { error: uploadError } = await supabase.storage.from("task-files").upload(path, file);
+    if (uploadError) { alert(uploadError.message); return; }
+    const { data } = supabase.storage.from("task-files").getPublicUrl(path);
+    const { error } = await supabase.from("generic_files").insert({
+      record_type: recordType,
+      record_id: recordId,
+      profile_id: profile?.id,
+      file_name: file.name,
+      file_url: data.publicUrl,
+      storage_path: path
+    });
+    if (error) alert(error.message);
+  }
+
+  async function deleteGenericFile(fileRow) {
+    if (!confirm("Datei wirklich entfernen?")) return;
+    if (fileRow.storage_path) {
+      await supabase.storage.from("task-files").remove([fileRow.storage_path]);
+    }
+    const { error } = await supabase.from("generic_files").delete().eq("id", fileRow.id);
+    if (error) alert(error.message);
   }
   async function addSprint(e) {
     e.preventDefault(); if (!sprintForm.name.trim()) return;
@@ -445,9 +481,9 @@ function App() {
       {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} nameOf={nameOf} />}
       {tab === "myCalendar" && <MyCalendar tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
       {tab === "area" && <AreaDashboard area={displayArea(profile?.area)} tasks={areaTasks(profile?.area)} blockers={blockers} orders={orders} activeSprint={activeSprint} />}
-      {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} />}
-      {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} />}
-      {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} deleteMeeting={deleteMeeting} meetings={meetings} />}
+      {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
+      {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
+      {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "gantt" && <Gantt tasks={tasks} />}
       {tab === "pm" && profile?.is_pm && <PmDashboard overdueTasks={overdueTasks} tasks={tasks} blockers={blockers} orders={orders} activeSprint={activeSprint} plannedPoints={plannedPoints} assigneesOf={assigneesOf} nameOf={nameOf} patchTask={patchTask} />}
     </main>
@@ -542,77 +578,59 @@ function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,
   </section>
 }
 
+function CalendarGrid({items}) {
+  const sorted = [...items].filter(i => i.start).sort((a,b)=>String(a.start).localeCompare(String(b.start)));
+  const grouped = sorted.reduce((acc, item) => {
+    const key = item.start;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+  return <div className="calendarGrid">
+    {Object.entries(grouped).map(([date, dayItems]) => <div className="calendarDay" key={date}>
+      <div className="calendarDate">{date}</div>
+      {dayItems.map(item => <div className={`calendarPill ${item.tone || "task"}`} key={item.id}>
+        <strong>{item.type}: {item.title}</strong>
+        <span>{item.end && item.end !== item.start ? `bis ${item.end}` : ""}</span>
+        <small>{item.meta}</small>
+        {item.deleteButton}
+      </div>)}
+    </div>)}
+  </div>
+}
+
 function TeamCalendar({sprints,tasks,schedule,nameOf}) {
   const items = [
-    ...sprints.map(s => ({
-      id: `sprint-${s.id}`,
-      type: "Sprint",
-      title: s.name,
-      start: s.start_date,
-      end: s.end_date,
-      meta: s.goal,
-      tone: "sprint"
-    })).filter(item => item.start || item.end),
-    ...tasks.map(t => ({
-      id: `task-${t.id}`,
-      type: "Aufgabe",
-      title: t.title,
-      start: t.planned_start || t.deadline,
-      end: t.planned_end || t.deadline,
-      meta: `${t.discipline || t.area} · ${t.status} · ${t.priority}`,
-      tone: "task"
-    })).filter(item => item.start),
-    ...schedule.map(s => ({
-      id: `schedule-${s.id}`,
-      type: "Termin",
-      title: s.title,
-      start: s.start_date,
-      end: s.end_date || s.start_date,
-      meta: nameOf(s.profile_id),
-      tone: "schedule"
-    })).filter(item => item.start),
-  ].sort((a,b) => String(a.start || "").localeCompare(String(b.start || "")));
-
-  return <section className="grid two">
-    <Card title="Team-Kalender">
-      <p className="muted">Sprint-Zeiträume, Aufgaben mit Datum und Team-Termine werden hier gemeinsam angezeigt.</p>
-      <div className="taskList">
-        {items.length === 0 && <p className="empty">Noch keine Kalenderdaten vorhanden.</p>}
-        {items.map(item => <div className={`itemCard calendarItem ${item.tone}`} key={item.id}>
-          <div className="row"><strong>{item.type}: {item.title}</strong><span className="badge">{item.start || "Start offen"}{item.end ? ` → ${item.end}` : ""}</span></div>
-          <p className="muted">{item.meta}</p>
-        </div>)}
-      </div>
-    </Card>
-    <Card title="Legende">
-      <ul className="checkList">
-        <li><b>Sprint</b>: Zeitraum eines Sprints</li>
-        <li><b>Aufgabe</b>: Aufgabe mit Start/Ende oder Deadline</li>
-        <li><b>Termin</b>: persönlicher oder Team-Termin</li>
-      </ul>
-    </Card>
+    ...sprints.map(s => ({ id:`sprint-${s.id}`, type:"Sprint", title:s.name, start:s.start_date, end:s.end_date, meta:s.goal, tone:"sprint" })),
+    ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.discipline || t.area} · ${t.status} · ${t.priority}`, tone:"task" })),
+    ...schedule.map(s => ({ id:`schedule-${s.id}`, type:"Termin", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:nameOf(s.profile_id), tone:"schedule" })),
+  ];
+  return <section className="card">
+    <h2>Team-Kalender</h2>
+    <p className="muted">Kalenderansicht für Sprint-Zeiträume, Team-Aufgaben und Termine.</p>
+    <CalendarGrid items={items}/>
   </section>
 }
 
 function MyCalendar({tasks,schedule,form,setForm,addSchedule,deleteSchedule}) {
-  const taskItems = tasks.filter(t => t.planned_start || t.deadline).map(t => ({
-    id: `task-${t.id}`, type: "Aufgabe", title: t.title, start: t.planned_start || t.deadline, end: t.planned_end || t.deadline, meta: `${t.status} · ${t.discipline || t.area}`
-  }));
-  const scheduleItems = schedule.map(s => ({
-    id: `schedule-${s.id}`, type: "Eigener Termin", title: s.title, start: s.start_date, end: s.end_date || s.start_date, meta: s.notes || "", scheduleId: s.id
-  }));
-  const items = [...taskItems, ...scheduleItems].filter(i=>i.start).sort((a,b)=>String(a.start).localeCompare(String(b.start)));
+  const items = [
+    ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.status} · ${t.discipline || t.area}`, tone:"task" })),
+    ...schedule.map(s => ({
+      id:`schedule-${s.id}`,
+      type:"Eigener Termin",
+      title:s.title,
+      start:s.start_date,
+      end:s.end_date || s.start_date,
+      meta:s.notes || "",
+      tone:"schedule",
+      deleteButton:<button className="miniDelete" onClick={()=>deleteSchedule(s.id)}><Trash2 size={12}/></button>
+    })),
+  ];
   return <section className="grid two">
     <Card title="Eigenen Termin hinzufügen"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/></Card>
     <Card title="Mein Kalender">
-      <div className="taskList">
-        {items.length === 0 && <p className="empty">Noch keine Termine oder datierten Aufgaben.</p>}
-        {items.map(item => <div className={`itemCard calendarItem ${item.type === "Eigener Termin" ? "schedule" : "task"}`} key={item.id}>
-          <div className="row"><strong>{item.type}: {item.title}</strong>{item.scheduleId && <button className="iconBtn" onClick={()=>deleteSchedule(item.scheduleId)}><Trash2 size={16}/></button>}</div>
-          <p className="muted">{item.start}{item.end && item.end !== item.start ? ` → ${item.end}` : ""}</p>
-          <p>{item.meta}</p>
-        </div>)}
-      </div>
+      <p className="muted">Kalenderansicht für deine Aufgaben und eigenen Termine.</p>
+      <CalendarGrid items={items}/>
     </Card>
   </section>
 }
@@ -646,16 +664,105 @@ function AreaDashboard({area,tasks,blockers,orders,activeSprint}) {
   </section>
 }
 
-function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf}) {
-  return <section className="grid two"><Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card><div className="taskList">{orders.map(o=><div className="itemCard" key={o.id}><div className="row"><strong>{o.name || o.item || "Bestellung"}</strong><div className="buttonRow"><select value={o.status} onChange={e=>patchOrder(o.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select><button className="iconBtn" onClick={()=>deleteOrder(o.id)} title="Bestellung löschen"><Trash2 size={16}/></button></div></div><p>{o.description}</p><p className="muted">{o.shop} · {o.order_number} · {o.price} · {nameOf(o.owner_id)}</p>{o.supplier_link&&<a href={o.supplier_link} target="_blank">Link öffnen</a>}</div>)}</div></section>
+function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
+  return <section className="grid two">
+    <Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card>
+    <div className="taskList">
+      {orders.map(o => {
+        const orderFiles = filesOfRecord("order", o.id);
+        return <div className="itemCard" key={o.id}>
+          <div className="row">
+            <strong>{o.name || o.item || "Bestellung"}</strong>
+            <div className="buttonRow">
+              <select value={o.status} onChange={e=>patchOrder(o.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+              <button className="iconBtn" onClick={()=>deleteOrder(o.id)} title="Bestellung löschen"><Trash2 size={16}/></button>
+            </div>
+          </div>
+          <p>{o.description}</p>
+          <p className="muted">{o.shop} · {o.order_number} · {o.price} · {nameOf(o.owner_id)}</p>
+          {o.supplier_link&&<a href={o.supplier_link} target="_blank">Link öffnen</a>}
+          <FileBox title="Dateien zur Bestellung" files={orderFiles} onUpload={file=>uploadGenericFile("order", o.id, file)} onDelete={deleteGenericFile}/>
+        </div>
+      })}
+    </div>
+  </section>
 }
 
-function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,nameOf}) {
-  return <section className="grid two"><Card title="Blocker posten"><form className="form" onSubmit={addBlocker}><textarea placeholder="Problem" value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/><textarea placeholder="Schon versucht" value={form.tried} onChange={e=>setForm({...form,tried:e.target.value})}/><input placeholder="Hilfe benötigt von" value={form.needed_from} onChange={e=>setForm({...form,needed_from:e.target.value})}/><button className="primary"><HelpCircle size={18}/> Posten</button></form></Card><div className="taskList">{blockers.map(b=><div className="itemCard" key={b.id}><div className="row"><strong>{b.question}</strong><div className="buttonRow"><span className={b.status==="Gelöst"?"badge done":"badge danger"}>{b.status}</span><button className="iconBtn" onClick={()=>deleteBlocker(b.id)} title="Blocker löschen"><Trash2 size={16}/></button></div></div><p>{b.tried}</p><textarea value={b.answer||""} onChange={e=>patchBlocker(b.id,{answer:e.target.value})}/><button className="secondary" onClick={()=>patchBlocker(b.id,{status:b.status==="Gelöst"?"Offen":"Gelöst"})}>Status wechseln</button></div>)}</div></section>
+function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
+  const sortedBlockers = [...blockers].sort((a,b) => {
+    if ((a.status === "Gelöst") !== (b.status === "Gelöst")) return a.status === "Gelöst" ? 1 : -1;
+    return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+  });
+  return <section className="grid two">
+    <Card title="Blocker posten">
+      <form className="form" onSubmit={addBlocker}>
+        <textarea placeholder="Problem / Frage" value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/>
+        <textarea placeholder="Schon versucht" value={form.tried} onChange={e=>setForm({...form,tried:e.target.value})}/>
+        <input placeholder="Hilfe benötigt von" value={form.needed_from} onChange={e=>setForm({...form,needed_from:e.target.value})}/>
+        <button className="primary"><HelpCircle size={18}/> Posten</button>
+      </form>
+    </Card>
+    <div className="taskList">
+      {sortedBlockers.map(b => {
+        const blockerFiles = filesOfRecord("blocker", b.id);
+        return <div className={b.status === "Gelöst" ? "itemCard resolved" : "itemCard"} key={b.id}>
+          <div className="row">
+            <strong>{b.question}</strong>
+            <div className="buttonRow">
+              <select value={b.status || "Offen"} onChange={e=>patchBlocker(b.id,{status:e.target.value})}>
+                {["Offen","In Klärung","Gelöst"].map(status => <option key={status}>{status}</option>)}
+              </select>
+              <button className="iconBtn" onClick={()=>deleteBlocker(b.id)} title="Blocker löschen"><Trash2 size={16}/></button>
+            </div>
+          </div>
+          <p><b>Schon versucht:</b> {b.tried || "-"}</p>
+          <p><b>Hilfe von:</b> {b.needed_from || "-"}</p>
+          <label>Antwort / Lösung — jeder kann hier antworten</label>
+          <textarea value={b.answer || ""} onChange={e=>patchBlocker(b.id,{answer:e.target.value})} placeholder="Antwort oder Lösung ergänzen..."/>
+          <FileBox title="Dateien zur Frage" files={blockerFiles} onUpload={file=>uploadGenericFile("blocker", b.id, file)} onDelete={deleteGenericFile}/>
+        </div>
+      })}
+    </div>
+  </section>
 }
 
-function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,deleteMeeting,meetings}) {
-  return <section className="grid two"><div className="stack"><Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div><div className="stack"><h2>Sprints</h2>{sprints.map(s=><div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><div className="buttonRow"><select value={s.status} onChange={e=>patchSprint(s.id,{status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select><button className="iconBtn" onClick={()=>deleteSprint(s.id)} title="Sprint löschen"><Trash2 size={16}/></button></div></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · Kapazität {s.capacity_points}</p></div>)}<h2>Protokolle</h2>{meetings.map(m=><div className="itemCard" key={m.id}><div className="row"><strong>{m.title}</strong><button className="iconBtn" onClick={()=>deleteMeeting(m.id)} title="Protokoll löschen"><Trash2 size={16}/></button></div><p className="muted">{m.meeting_type} · {m.meeting_date}</p><p><b>Entscheidungen:</b> {m.decisions}</p><p><b>Offen:</b> {m.open_points}</p><p><b>Nächste Schritte:</b> {m.next_steps}</p></div>)}</div></section>
+function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,deleteMeeting,meetings,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
+  return <section className="grid two">
+    <div className="stack">
+      <Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card>
+      <Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card>
+    </div>
+    <div className="stack">
+      <h2>Sprints</h2>
+      {sprints.map(s => {
+        const sprintFiles = filesOfRecord("sprint", s.id);
+        return <div className="itemCard" key={s.id}>
+          <div className="row">
+            <strong>{s.name}</strong>
+            <div className="buttonRow">
+              <select value={s.status} onChange={e=>patchSprint(s.id,{status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select>
+              <button className="iconBtn" onClick={()=>deleteSprint(s.id)} title="Sprint löschen"><Trash2 size={16}/></button>
+            </div>
+          </div>
+          <p>{s.goal}</p>
+          <p className="muted">{s.start_date} bis {s.end_date} · Kapazität {s.capacity_points}</p>
+          <FileBox title="Dateien zum Sprint" files={sprintFiles} onUpload={file=>uploadGenericFile("sprint", s.id, file)} onDelete={deleteGenericFile}/>
+        </div>
+      })}
+      <h2>Protokolle</h2>
+      {meetings.map(m => {
+        const meetingFiles = filesOfRecord("meeting", m.id);
+        return <div className="itemCard" key={m.id}>
+          <div className="row"><strong>{m.title}</strong><button className="iconBtn" onClick={()=>deleteMeeting(m.id)} title="Protokoll löschen"><Trash2 size={16}/></button></div>
+          <p className="muted">{m.meeting_type} · {m.meeting_date}</p>
+          <p><b>Entscheidungen:</b> {m.decisions}</p>
+          <p><b>Offen:</b> {m.open_points}</p>
+          <p><b>Nächste Schritte:</b> {m.next_steps}</p>
+          <FileBox title="Dateien zum Protokoll" files={meetingFiles} onUpload={file=>uploadGenericFile("meeting", m.id, file)} onDelete={deleteGenericFile}/>
+        </div>
+      })}
+    </div>
+  </section>
 }
 
 function Gantt({tasks}) {
@@ -674,6 +781,19 @@ function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
 function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
   const [comment,setComment]=useState(""); const taskAssignees=assigneesOf(task.id); const canDelete=true; const deps=depsOf(task.id);
   return <div className={task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done"?"taskCard overdue":"taskCard"}><div className="row"><strong>{task.priority} · {task.title}</strong><span className="badge">{task.points} SP</span></div><p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"offen"}</p><p className="muted">Verantwortlich: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p><p>{task.description}</p>{deps.length>0&&<p className="muted"><GitBranch size={14}/> Abhängig von: {deps.map(d=>d.title).join(", ")}</p>}<label>Evidence / Review-Doku</label><input value={task.evidence||""} onChange={e=>patchTask(task.id,{evidence:e.target.value})}/><div className="miniSection"><h4><Paperclip size={15}/> Dateien</h4><input type="file" onChange={e=>uploadTaskFile(task.id,e.target.files?.[0])}/>{files.map(f=><a key={f.id} href={f.file_url} target="_blank"><LinkIcon size={14}/> {f.file_name}</a>)}</div><div className="miniSection"><h4><MessageCircle size={15}/> Kommentare</h4>{comments.map(c=><p key={c.id} className="comment"><b>{nameOf(c.profile_id)}:</b> {c.body}</p>)}<div className="formRow"><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Kommentar"/><button type="button" className="secondary" onClick={()=>addComment(task.id,comment,()=>setComment(""))}>Senden</button></div></div><div className="row"><select value={task.status} onChange={e=>moveTask(task,e.target.value)}>{sprintColumns.map(c=><option key={c}>{c}</option>)}</select><div className="buttonRow">{removeTaskFromSprint&&<button className="secondary" onClick={()=>removeTaskFromSprint(task.id)}>Zurück ins Backlog</button>}{canDelete&&<button className="iconBtn" onClick={()=>deleteTask(task.id)}><Trash2 size={16}/></button>}</div></div></div>
+}
+
+
+function FileBox({title,files,onUpload,onDelete}) {
+  return <div className="miniSection">
+    <h4><Paperclip size={15}/> {title}</h4>
+    <input type="file" onChange={e=>onUpload(e.target.files?.[0])}/>
+    {files.length === 0 && <p className="muted">Noch keine Dateien.</p>}
+    {files.map(f => <div className="fileRow" key={f.id}>
+      <a href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>
+      <button className="miniDelete" onClick={()=>onDelete(f)}><Trash2 size={12}/></button>
+    </div>)}
+  </div>
 }
 
 function OrderForm({form,setForm,profiles,submit}){return <form className="form" onSubmit={submit}><input placeholder="Was muss bestellt werden?" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Beschreibung" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Lieferant / Shop" value={form.shop} onChange={e=>setForm({...form,shop:e.target.value})}/><input placeholder="Bestellnummer" value={form.order_number} onChange={e=>setForm({...form,order_number:e.target.value})}/><input placeholder="Link" value={form.supplier_link} onChange={e=>setForm({...form,supplier_link:e.target.value})}/><input placeholder="Menge" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/><input placeholder="Preis" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Verantwortlich</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><button className="primary"><Package size={18}/> Bestellung hinzufügen</button></form>}
