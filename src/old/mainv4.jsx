@@ -16,27 +16,6 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const sprintColumns = ["To Do", "Doing", "Review", "Done"];
 const priorities = ["P1", "P2", "P3", "P4"];
 const disciplines = ["Software", "Systems Engineering", "Electronics", "Mechanics", "Testing", "Manufacturing", "Dokumentation", "Project Management"];
-const areaOptions = [
-  { value: "Project Management", label: "Project Management" },
-  { value: "Systems Engineering", label: "Systems Engineering" },
-  { value: "Software", label: "Software" },
-  { value: "Electronics", label: "Electronics" },
-  { value: "Mechanics", label: "Mechanics" },
-  { value: "Testing", label: "Testing" },
-  { value: "Manufacturing", label: "Manufacturing / Bauen" },
-  { value: "Dokumentation", label: "Dokumentation" },
-];
-const roleOptions = [
-  "Project Manager",
-  "Systems Engineer",
-  "Software Developer",
-  "Electronics Developer",
-  "Mechanical Developer",
-  "Test Engineer",
-  "Manufacturing",
-  "Documentation",
-  "Team Member",
-];
 const workTypes = ["Organisation", "Bestellung", "Testing", "Manufacturing / Bauen", "Recherche", "Dokumentation", "Integration", "Meeting / Abstimmung", "Fehlerbehebung", "Design / Konstruktion", "Review / Freigabe"];
 const orderStatus = ["Benötigt", "Bestellt", "Versendet", "Angekommen"];
 const meetingTypes = ["Sprint Planning", "Weekly", "Sprint Review", "Retrospective", "Extra Meeting"];
@@ -68,7 +47,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
   const [authMode, setAuthMode] = useState("signin");
-  const [authForm, setAuthForm] = useState({ email: "", password: "", displayName: "", role: "Team Member", area: "Mechanics" });
+  const [authForm, setAuthForm] = useState({ email: "", password: "", displayName: "", role: "Member", area: "ME" });
   const [taskForm, setTaskForm] = useState(emptyTask());
   const [sprintForm, setSprintForm] = useState(emptySprint());
   const [orderForm, setOrderForm] = useState(emptyOrder());
@@ -116,7 +95,7 @@ function App() {
     ]);
     if (!profileRes.data) {
       const fallbackName = session.user.email?.split("@")[0] || "Teammitglied";
-      const insert = await supabase.from("profiles").insert({ id: session.user.id, display_name: fallbackName, role: "Team Member", area: "Mechanics", is_pm: false }).select().single();
+      const insert = await supabase.from("profiles").insert({ id: session.user.id, display_name: fallbackName, role: "Member", area: "ME", is_pm: false }).select().single();
       setProfile(insert.data);
     } else setProfile(profileRes.data);
     setProfiles(profilesRes.data || []); setTasks(tasksRes.data || []); setSprints(sprintsRes.data || []);
@@ -167,29 +146,6 @@ function App() {
   function commentsOf(taskId) { return comments.filter(c => c.task_id === taskId); }
   function filesOf(taskId) { return files.filter(f => f.task_id === taskId); }
   function depsOf(taskId) { return dependencies.filter(d => d.task_id === taskId).map(d => tasks.find(t => t.id === d.depends_on_task_id)).filter(Boolean); }
-  function normalizeArea(value) {
-    const map = {
-      PM: "Project Management",
-      SE: "Systems Engineering",
-      SW: "Software",
-      EE: "Electronics",
-      ME: "Mechanics",
-      TEST: "Testing",
-      MFG: "Manufacturing",
-      DOC: "Dokumentation",
-    };
-    return map[value] || value || "Nicht zugeordnet";
-  }
-  function displayArea(value) {
-    return areaOptions.find(a => a.value === normalizeArea(value))?.label || normalizeArea(value);
-  }
-  function areaTasks(area) {
-    const normalized = normalizeArea(area);
-    return tasks.filter(t =>
-      normalizeArea(t.discipline || t.area) === normalized ||
-      normalizeArea(t.area) === normalized
-    );
-  }
 
   async function addTask(e, forceOwnerId = null) {
     e.preventDefault();
@@ -287,18 +243,9 @@ function App() {
     else if (selectedSprintId === id) setSelectedSprintId("");
   }
   async function addOrder(e) {
-    e.preventDefault();
-    if (!orderForm.name.trim()) {
-      alert("Bitte eintragen, was bestellt werden muss.");
-      return;
-    }
-    const payload = { ...orderForm, owner_id: orderForm.owner_id || profile?.id };
-    const { error } = await supabase.from("orders").insert(payload);
-    if (error) {
-      alert(error.message);
-      return;
-    }
-    setOrderForm(emptyOrder());
+    e.preventDefault(); if (!orderForm.name.trim()) return;
+    const { error } = await supabase.from("orders").insert({ ...orderForm, owner_id: orderForm.owner_id || profile?.id });
+    if (error) alert(error.message); else setOrderForm(emptyOrder());
   }
   async function patchOrder(id, patch) {
     const { error } = await supabase.from("orders").update(patch).eq("id", id);
@@ -310,11 +257,7 @@ function App() {
     if (error) alert(error.message);
   }
   async function addBlocker(e) {
-    e.preventDefault();
-    if (!blockerForm.question.trim()) {
-      alert("Bitte eine Frage oder einen Blocker eintragen.");
-      return;
-    }
+    e.preventDefault(); if (!blockerForm.question.trim()) return;
     const { error } = await supabase.from("blockers").insert({ ...blockerForm, owner_id: profile?.id, status: "Offen", answer: "" });
     if (error) alert(error.message); else setBlockerForm(emptyBlocker());
   }
@@ -365,12 +308,8 @@ function App() {
         <form className="form" onSubmit={authMode === "signin" ? signIn : signUp}>
           {authMode === "signup" && <>
             <input placeholder="Name" value={authForm.displayName} onChange={e => setAuthForm({ ...authForm, displayName: e.target.value })} />
-            <select value={authForm.role} onChange={e => setAuthForm({ ...authForm, role: e.target.value })}>
-              {roleOptions.map(role => <option key={role} value={role}>{role}</option>)}
-            </select>
-            <select value={authForm.area} onChange={e => setAuthForm({ ...authForm, area: e.target.value })}>
-              {areaOptions.map(area => <option key={area.value} value={area.value}>{area.label}</option>)}
-            </select>
+            <input placeholder="Rolle" value={authForm.role} onChange={e => setAuthForm({ ...authForm, role: e.target.value })} />
+            <select value={authForm.area} onChange={e => setAuthForm({ ...authForm, area: e.target.value })}>{["PM", "SE", "ME", "EE", "SW", "TEST", "MFG", "DOC"].map(a => <option key={a}>{a}</option>)}</select>
           </>}
           <input placeholder="E-Mail" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} />
           <input placeholder="Passwort" type="password" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} />
@@ -384,7 +323,7 @@ function App() {
     <main className="page">
       <header className="topbar">
         <div><p className="eyebrow">ADMM Team Planner v4</p><h1>Backlog · Sprints · PM-Übersicht</h1><p className="muted">Aktueller Sprint: {activeSprint?.name || "Noch kein Sprint"} · Ziel: {activeSprint?.goal || "Noch kein Ziel"}</p></div>
-        <div className="userBox"><strong>{profile?.display_name || session.user.email}</strong><span>{profile?.role} · {displayArea(profile?.area)}</span><span>{unreadNotifications.length} neue Hinweise</span><button className="secondary" onClick={signOut}><LogOut size={16}/> Logout</button></div>
+        <div className="userBox"><strong>{profile?.display_name || session.user.email}</strong><span>{profile?.role} · {profile?.area}</span><span>{unreadNotifications.length} neue Hinweise</span><button className="secondary" onClick={signOut}><LogOut size={16}/> Logout</button></div>
       </header>
 
       <section className="stats">
@@ -400,11 +339,7 @@ function App() {
       </section>
 
       <nav className="tabs">
-        {["dashboard","backlog","sprint","history","me","calendar","area","orders","blockers","meetings","gantt"].map(id => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
-            {id === "area" ? `${displayArea(profile?.area)}-Übersicht` : labelForTab(id)}
-          </button>
-        ))}
+        {["dashboard","backlog","sprint","history","me","orders","blockers","meetings","gantt"].map(id => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{labelForTab(id)}</button>)}
         {profile?.is_pm && <button className={tab === "pm" ? "active" : ""} onClick={() => setTab("pm")}>PM-Dashboard</button>}
       </nav>
 
@@ -413,8 +348,6 @@ function App() {
       {tab === "sprint" && <SprintBoard sprints={sprints} activeSprint={activeSprint} setSelectedSprintId={setSelectedSprintId} tasks={sprintTasks} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} removeTaskFromSprint={removeTaskFromSprint} />}
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} />}
       {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
-      {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} nameOf={nameOf} />}
-      {tab === "area" && <AreaDashboard area={displayArea(profile?.area)} tasks={areaTasks(profile?.area)} blockers={blockers} orders={orders} activeSprint={activeSprint} />}
       {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} />}
       {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} deleteMeeting={deleteMeeting} meetings={meetings} />}
@@ -425,7 +358,7 @@ function App() {
 }
 
 function labelForTab(id) {
-  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Aktueller Sprint", history:"Sprint-Historie", me:"Mein Bereich", orders:"Bestellungen", blockers:"Fragen & Blocker", calendar:"Team-Kalender", area:"Bereichs-Übersicht", meetings:"Sprints & Protokolle", gantt:"Gantt"})[id];
+  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Aktueller Sprint", history:"Sprint-Historie", me:"Mein Bereich", orders:"Bestellungen", blockers:"Fragen & Blocker", meetings:"Sprints & Protokolle", gantt:"Gantt"})[id];
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() - new Date(dateString)) / (1000*60*60*24))); }
@@ -466,135 +399,11 @@ function SprintHistory({sprints,tasks,meetings,setSelectedSprintId}) {
 }
 
 function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
-  const personalItems = [
-    ...tasks.map(t => ({
-      id: `task-${t.id}`,
-      type: "Aufgabe",
-      title: t.title,
-      start: t.planned_start || t.deadline,
-      end: t.planned_end || t.deadline,
-      meta: `${t.priority} · ${t.status}`,
-    })).filter(item => item.start),
-    ...schedule.map(s => ({
-      id: `schedule-${s.id}`,
-      type: "Eigener Termin",
-      title: s.title,
-      start: s.start_date,
-      end: s.end_date || s.start_date,
-      meta: s.notes || "",
-      deleteId: s.id,
-    }))
-  ].sort((a,b) => String(a.start).localeCompare(String(b.start)));
-
-  return <section className="grid two">
-    <Card title="Mein Kalender">
-      <ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/>
-      <div className="taskList">
-        {personalItems.length === 0 && <p className="empty">Noch keine eigenen Termine oder Aufgaben mit Datum.</p>}
-        {personalItems.map(item => <div className="itemCard" key={item.id}>
-          <div className="row">
-            <strong>{item.type}: {item.title}</strong>
-            {item.deleteId && <button className="iconBtn" onClick={()=>deleteSchedule(item.deleteId)} title="Termin löschen"><Trash2 size={16}/></button>}
-          </div>
-          <p className="muted">{item.start}{item.end && item.end !== item.start ? ` bis ${item.end}` : ""}</p>
-          <p>{item.meta}</p>
-        </div>)}
-      </div>
-    </Card>
-    <div>
-      <h2>Meine Aufgaben</h2>
-      <p className="muted">Hier erscheinen Aufgaben, bei denen du Hauptverantwortliche/r oder zusätzlich verantwortlich bist.</p>
-      <div className="taskList">
-        {tasks.length === 0 && <p className="empty">Keine eigenen Aufgaben.</p>}
-        {tasks.map(t=><TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile}/>)}
-      </div>
-    </div>
-  </section>
-}
-
-function TeamCalendar({sprints,tasks,schedule,nameOf}) {
-  const items = [
-    ...sprints.map(s => ({
-      id: `sprint-${s.id}`,
-      type: "Sprint",
-      title: s.name,
-      start: s.start_date,
-      end: s.end_date,
-      meta: s.goal,
-      tone: "sprint"
-    })).filter(item => item.start || item.end),
-    ...tasks.map(t => ({
-      id: `task-${t.id}`,
-      type: "Aufgabe",
-      title: t.title,
-      start: t.planned_start || t.deadline,
-      end: t.planned_end || t.deadline,
-      meta: `${t.discipline || t.area} · ${t.status} · ${t.priority}`,
-      tone: "task"
-    })).filter(item => item.start),
-    ...schedule.map(s => ({
-      id: `schedule-${s.id}`,
-      type: "Termin",
-      title: s.title,
-      start: s.start_date,
-      end: s.end_date || s.start_date,
-      meta: nameOf(s.profile_id),
-      tone: "schedule"
-    })).filter(item => item.start),
-  ].sort((a,b) => String(a.start || "").localeCompare(String(b.start || "")));
-
-  return <section className="grid two">
-    <Card title="Team-Kalender">
-      <p className="muted">Sprint-Zeiträume, Aufgaben mit Datum und Team-Termine werden hier gemeinsam angezeigt.</p>
-      <div className="taskList">
-        {items.length === 0 && <p className="empty">Noch keine Kalenderdaten vorhanden.</p>}
-        {items.map(item => <div className={`itemCard calendarItem ${item.tone}`} key={item.id}>
-          <div className="row"><strong>{item.type}: {item.title}</strong><span className="badge">{item.start || "Start offen"}{item.end ? ` → ${item.end}` : ""}</span></div>
-          <p className="muted">{item.meta}</p>
-        </div>)}
-      </div>
-    </Card>
-    <Card title="Legende">
-      <ul className="checkList">
-        <li><b>Sprint</b>: Zeitraum eines Sprints</li>
-        <li><b>Aufgabe</b>: Aufgabe mit Start/Ende oder Deadline</li>
-        <li><b>Termin</b>: persönlicher oder Team-Termin</li>
-      </ul>
-    </Card>
-  </section>
-}
-
-function AreaDashboard({area,tasks,blockers,orders,activeSprint}) {
-  const sprintTasks = activeSprint ? tasks.filter(t => t.sprint_id === activeSprint.id) : [];
-  const openTasks = tasks.filter(t => t.status !== "Done");
-  const reviewTasks = tasks.filter(t => t.status === "Review");
-  const overdue = tasks.filter(t => t.deadline && new Date(t.deadline) < startOfToday() && t.status !== "Done");
-
-  return <section className="grid two">
-    <Card title={`${area}-Übersicht`}>
-      <ul className="checkList">
-        <li>Aufgaben im Bereich: {tasks.length}</li>
-        <li>Offen: {openTasks.length}</li>
-        <li>Im aktuellen Sprint: {sprintTasks.length}</li>
-        <li>In Review: {reviewTasks.length}</li>
-        <li>Überfällig: {overdue.length}</li>
-      </ul>
-    </Card>
-    <div className="stack">
-      <h2>Aufgaben in diesem Bereich</h2>
-      <div className="taskList">
-        {tasks.length === 0 && <p className="empty">Noch keine Aufgaben in diesem Bereich.</p>}
-        {tasks.map(t => <div className="itemCard" key={t.id}>
-          <div className="row"><strong>{t.priority} · {t.title}</strong><span className="badge">{t.status}</span></div>
-          <p className="muted">{t.work_type} · Deadline {t.deadline || "offen"}</p>
-        </div>)}
-      </div>
-    </div>
-  </section>
+  return <section className="grid two"><Card title="Mein Zeitplan"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/><div className="taskList">{schedule.map(s=><div className="itemCard" key={s.id}><div className="row"><strong>{s.title}</strong><button className="iconBtn" onClick={()=>deleteSchedule(s.id)} title="Zeitplan löschen"><Trash2 size={16}/></button></div><p className="muted">{s.start_date}{s.end_date?` bis ${s.end_date}`:""}</p><p>{s.notes}</p></div>)}</div></Card><div><h2>Meine Aufgaben</h2><div className="taskList">{tasks.map(t=><TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile}/>)}</div></div></section>
 }
 
 function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf}) {
-  return <section className="grid two"><Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card><div className="taskList">{orders.map(o=><div className="itemCard" key={o.id}><div className="row"><strong>{o.name || o.item || "Bestellung"}</strong><div className="buttonRow"><select value={o.status} onChange={e=>patchOrder(o.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select><button className="iconBtn" onClick={()=>deleteOrder(o.id)} title="Bestellung löschen"><Trash2 size={16}/></button></div></div><p>{o.description}</p><p className="muted">{o.shop} · {o.order_number} · {o.price} · {nameOf(o.owner_id)}</p>{o.supplier_link&&<a href={o.supplier_link} target="_blank">Link öffnen</a>}</div>)}</div></section>
+  return <section className="grid two"><Card title="Bestellung hinzufügen"><OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/></Card><div className="taskList">{orders.map(o=><div className="itemCard" key={o.id}><div className="row"><strong>{o.name}</strong><div className="buttonRow"><select value={o.status} onChange={e=>patchOrder(o.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select><button className="iconBtn" onClick={()=>deleteOrder(o.id)} title="Bestellung löschen"><Trash2 size={16}/></button></div></div><p>{o.description}</p><p className="muted">{o.shop} · {o.order_number} · {o.price} · {nameOf(o.owner_id)}</p>{o.supplier_link&&<a href={o.supplier_link} target="_blank">Link öffnen</a>}</div>)}</div></section>
 }
 
 function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,nameOf}) {
