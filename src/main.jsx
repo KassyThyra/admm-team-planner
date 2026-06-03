@@ -402,6 +402,10 @@ function App() {
     const { error } = await supabase.from("meetings").insert({ ...meetingForm, sprint_id: meetingForm.sprint_id || null, created_by: profile?.id });
     if (error) alert(error.message); else setMeetingForm(emptyMeeting());
   }
+  async function patchMeeting(id, patch) {
+    const { error } = await supabase.from("meetings").update(patch).eq("id", id);
+    if (error) alert(error.message);
+  }
   async function deleteMeeting(id) {
     if (!confirm("Meeting-Protokoll wirklich löschen?")) return;
     const { error } = await supabase.from("meetings").delete().eq("id", id);
@@ -481,7 +485,7 @@ function App() {
       {tab === "area" && <AreaDashboard area={displayArea(profile?.area)} tasks={areaTasks(profile?.area)} blockers={blockers} orders={orders} activeSprint={activeSprint} />}
       {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
-      {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
+      {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "gantt" && <Gantt tasks={tasks} />}
       {tab === "pm" && profile?.is_pm && <PmDashboard overdueTasks={overdueTasks} tasks={tasks} blockers={blockers} orders={orders} activeSprint={activeSprint} plannedPoints={plannedPoints} assigneesOf={assigneesOf} nameOf={nameOf} patchTask={patchTask} />}
     </main>
@@ -551,6 +555,94 @@ function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,
       </div>
     </div>
   </section>
+}
+
+
+function getCalendarRange(viewDate, mode) {
+  const base = new Date(viewDate);
+  if (mode === "week") {
+    const day = base.getDay() || 7;
+    const start = new Date(base);
+    start.setDate(base.getDate() - day + 1);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return { start, end };
+  }
+
+  const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+  const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+
+  const start = new Date(monthStart);
+  const startDay = start.getDay() || 7;
+  start.setDate(start.getDate() - startDay + 1);
+
+  const end = new Date(monthEnd);
+  const endDay = end.getDay() || 7;
+  end.setDate(end.getDate() + (7 - endDay));
+
+  return { start, end };
+}
+
+function fmtDate(date) {
+  const copy = new Date(date);
+  copy.setHours(12, 0, 0, 0);
+  return copy.toISOString().slice(0, 10);
+}
+
+function shiftDate(date, mode, amount) {
+  const next = new Date(date);
+  if (mode === "week") next.setDate(next.getDate() + amount * 7);
+  else next.setMonth(next.getMonth() + amount);
+  return next;
+}
+
+function CalendarGrid({ items, title }) {
+  const [mode, setMode] = useState("month");
+  const [viewDate, setViewDate] = useState(new Date());
+  const { start, end } = getCalendarRange(viewDate, mode);
+
+  const days = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    days.push(new Date(d));
+  }
+
+  const visibleItems = items.filter(item => {
+    if (!item.start) return false;
+    const itemStart = item.start;
+    const itemEnd = item.end || item.start;
+    return itemStart <= fmtDate(end) && itemEnd >= fmtDate(start);
+  });
+
+  const monthTitle = viewDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+
+  return <div className="calendarShell">
+    <div className="calendarToolbar">
+      <h2>{title}</h2>
+      <div className="buttonRow">
+        <button className="secondary" type="button" onClick={() => setViewDate(shiftDate(viewDate, mode, -1))}>Zurück</button>
+        <select value={mode} onChange={e => setMode(e.target.value)}>
+          <option value="month">Monat</option>
+          <option value="week">Woche</option>
+        </select>
+        <button className="secondary" type="button" onClick={() => setViewDate(new Date())}>Heute</button>
+        <button className="secondary" type="button" onClick={() => setViewDate(shiftDate(viewDate, mode, 1))}>Weiter</button>
+      </div>
+    </div>
+    <p className="muted">{mode === "month" ? monthTitle : `${fmtDate(start)} bis ${fmtDate(end)}`}</p>
+    <div className={mode === "week" ? "calendarGrid week" : "calendarGrid month"}>
+      {days.map(day => {
+        const dayKey = fmtDate(day);
+        const dayItems = visibleItems.filter(item => item.start <= dayKey && (item.end || item.start) >= dayKey);
+        return <div className="calendarDay" key={dayKey}>
+          <div className="calendarDate">{day.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })}</div>
+          {dayItems.map(item => <div className={`calendarPill ${item.tone || "task"}`} key={`${dayKey}-${item.id}`}>
+            <strong>{item.type}: {item.title}</strong>
+            <small>{item.meta}</small>
+          </div>)}
+        </div>
+      })}
+    </div>
+  </div>
 }
 
 function TeamCalendar({sprints,tasks,schedule,nameOf}) {
@@ -706,14 +798,14 @@ function EditableBlocker({blocker,patchBlocker,deleteBlocker,files,uploadGeneric
   </div>
 }
 
-function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,deleteMeeting,meetings,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
+function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,patchMeeting,deleteMeeting,meetings,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
   return <section className="grid two">
     <div className="stack"><Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
     <div className="stack">
       <h2>Sprints</h2>
       {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
       <h2>Protokolle</h2>
-      {meetings.map(m => <EditableMeeting key={m.id} meeting={m} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
+      {meetings.map(m => <EditableMeeting key={m.id} meeting={m} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
 }
@@ -740,14 +832,58 @@ function EditableSprint({sprint,patchSprint,deleteSprint,files,uploadGenericFile
     </div>
   </div>
 }
-function EditableMeeting({meeting,deleteMeeting,files,uploadGenericFile,deleteGenericFile}) {
+function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGenericFile,deleteGenericFile}) {
+  const [editing,setEditing] = useState(false);
+  const [draft,setDraft] = useState({...meeting});
+
+  async function save() {
+    await patchMeeting(meeting.id, {
+      sprint_id: draft.sprint_id || null,
+      meeting_type: draft.meeting_type || "Weekly",
+      title: draft.title || "",
+      meeting_date: draft.meeting_date || null,
+      participants: draft.participants || "",
+      decisions: draft.decisions || "",
+      open_points: draft.open_points || "",
+      next_steps: draft.next_steps || ""
+    });
+    setEditing(false);
+  }
+
   return <div className="itemCard">
-    <div className="row"><strong>{meeting.title}</strong><button className="iconBtn" onClick={()=>deleteMeeting(meeting.id)} title="Protokoll löschen"><Trash2 size={16}/></button></div>
-    <p className="muted">{meeting.meeting_type} · {meeting.meeting_date}</p>
-    <p><b>Entscheidungen:</b> {meeting.decisions}</p>
-    <p><b>Offen:</b> {meeting.open_points}</p>
-    <p><b>Nächste Schritte:</b> {meeting.next_steps}</p>
+    {!editing ? <>
+      <div className="row">
+        <strong>{meeting.title}</strong>
+        <button className="iconBtn" onClick={()=>deleteMeeting(meeting.id)} title="Protokoll löschen"><Trash2 size={16}/></button>
+      </div>
+      <p className="muted">{meeting.meeting_type} · {meeting.meeting_date}</p>
+      <p><b>Teilnehmer:</b> {meeting.participants || "-"}</p>
+      <p><b>Entscheidungen:</b> {meeting.decisions || "-"}</p>
+      <p><b>Offen:</b> {meeting.open_points || "-"}</p>
+      <p><b>Nächste Schritte:</b> {meeting.next_steps || "-"}</p>
+    </> : <div className="form">
+      <select value={draft.meeting_type || "Weekly"} onChange={e=>setDraft({...draft,meeting_type:e.target.value})}>
+        {meetingTypes.map(t=><option key={t}>{t}</option>)}
+      </select>
+      <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Titel"/>
+      <input type="date" value={draft.meeting_date || ""} onChange={e=>setDraft({...draft,meeting_date:e.target.value})}/>
+      <textarea value={draft.participants || ""} onChange={e=>setDraft({...draft,participants:e.target.value})} placeholder="Teilnehmer"/>
+      <textarea value={draft.decisions || ""} onChange={e=>setDraft({...draft,decisions:e.target.value})} placeholder="Entscheidungen"/>
+      <textarea value={draft.open_points || ""} onChange={e=>setDraft({...draft,open_points:e.target.value})} placeholder="Offene Punkte"/>
+      <textarea value={draft.next_steps || ""} onChange={e=>setDraft({...draft,next_steps:e.target.value})} placeholder="Nächste Schritte"/>
+    </div>}
+
     <FileBox title="Dateien zum Protokoll" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
+
+    <div className="buttonRow">
+      {!editing
+        ? <button className="secondary" type="button" onClick={()=>setEditing(true)}>Protokoll bearbeiten</button>
+        : <>
+            <button className="primary" type="button" onClick={save}>Speichern</button>
+            <button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button>
+          </>
+      }
+    </div>
   </div>
 }
 
