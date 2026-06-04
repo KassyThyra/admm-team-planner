@@ -344,3 +344,23 @@
 .calendarPill.person-8, .legendChip.person-8 { background: #e0f2fe; border-color: #7dd3fc; }
 .calendarPill.person-9, .legendChip.person-9 { background: #f3e8ff; border-color: #d8b4fe; }
 .calendarPill.person-10, .legendChip.person-10 { background: #ccfbf1; border-color: #5eead4; }
+
+.clickable { cursor: pointer; }
+.compactTask .row.clickable:hover, .taskCard .row.clickable:hover { opacity: 0.82; }
+.miniBurn { margin-bottom: 16px; }
+.miniBurn svg { width: 100%; height: 120px; color: #111827; background: #f9fafb; border-radius: 14px; margin-top: 8px; }
+.chartLabels { display: flex; justify-content: space-between; color: #6b7280; font-size: 12px; }
+.realGantt { display: grid; gap: 6px; overflow-x: auto; align-items: center; }
+.ganttHead, .ganttDate, .ganttTaskName { font-size: 12px; font-weight: 800; color: #374151; }
+.ganttDate { writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+.ganttTaskName { position: sticky; left: 0; background: white; z-index: 2; padding: 8px; border-radius: 10px; }
+.realGanttBar { min-height: 34px; border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 800; overflow: hidden; white-space: nowrap; border: 1px solid #d1d5db; }
+.realGanttBar.Software { background: #dbeafe; }
+.realGanttBar.Electronics { background: #fef3c7; }
+.realGanttBar.Mechanics { background: #dcfce7; }
+.realGanttBar.Systems-Engineering { background: #ede9fe; }
+.realGanttBar.Testing { background: #ffedd5; }
+.realGanttBar.Manufacturing { background: #e0f2fe; }
+.realGanttBar.Dokumentation { background: #f3e8ff; }
+.realGanttBar.Project-Management { background: #e5e7eb; }
+.userBox input, .userBox select { width: 100%; }

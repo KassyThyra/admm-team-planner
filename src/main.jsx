@@ -182,16 +182,29 @@ function App() {
     const { error } = await supabase.auth.signInWithPassword({ email: authForm.email, password: authForm.password });
     if (error) setMessage(error.message);
   }
+  async function patchProfile(patch) {
+    if (!profile?.id) return;
+    const normalizedPatch = {...patch};
+    if (patch.role) {
+      normalizedPatch.area = roleToArea(patch.role);
+      normalizedPatch.is_pm = roleToIsPm(patch.role);
+    }
+    const { error } = await supabase.from("profiles").update(normalizedPatch).eq("id", profile.id);
+    if (error) alert(error.message);
+    else setProfile({...profile, ...normalizedPatch});
+  }
   async function signOut() { await supabase.auth.signOut(); }
 
   const activeSprint = sprints.find(s => s.id === selectedSprintId) || sprints.find(s => s.status === "Aktiv") || sprints[0];
   const doneTasks = tasks.filter(t => t.status === "Done");
-  const currentLevel = [...levelRules].reverse().find(rule => doneTasks.length >= rule.needed) || levelRules[0];
-  const nextLevel = levelRules.find(rule => rule.needed > doneTasks.length);
+  const currentLevelNumber = sprintLevel(sprints);
+  const currentLevel = { level: currentLevelNumber, title: `Sprint-Level ${currentLevelNumber}` };
+  const nextLevel = null;
   const overdueTasks = tasks.filter(t => t.deadline && new Date(t.deadline) < startOfToday() && t.status !== "Done");
   const backlogTasks = tasks.filter(t => !t.sprint_id && t.backlog_status !== "Erledigt");
   const sprintTasks = activeSprint ? tasks.filter(t => t.sprint_id === activeSprint.id) : [];
   const plannedPoints = sprintTasks.reduce((sum, t) => sum + Number(t.points || 0), 0);
+  const activeSprintPoints = activeSprint ? sprintPoints(tasks, activeSprint.id) : {done:0,total:0};
   const myTaskIds = profile ? assignees.filter(a => a.profile_id === profile.id).map(a => a.task_id) : [];
   const myTasks = profile ? tasks.filter(t => t.owner_id === profile.id || myTaskIds.includes(t.id)) : [];
   const mySchedule = profile ? schedule.filter(s => s.profile_id === profile.id) : [];
@@ -390,7 +403,7 @@ function App() {
   }
   async function addSchedule(e) {
     e.preventDefault(); if (!scheduleForm.title.trim()) return;
-    const { error } = await supabase.from("schedule_items").insert({ profile_id: profile.id, task_id: scheduleForm.task_id || null, title: scheduleForm.title, start_date: scheduleForm.start_date, end_date: scheduleForm.end_date || null, notes: scheduleForm.notes });
+    const { error } = await supabase.from("schedule_items").insert({ profile_id: profile.id, task_id: scheduleForm.task_id || null, title: scheduleForm.title, start_date: scheduleForm.start_date, end_date: scheduleForm.end_date || null, notes: scheduleForm.notes, visibility: scheduleForm.visibility || "private" });
     if (error) alert(error.message); else setScheduleForm(emptySchedule());
   }
   async function deleteSchedule(id) {
@@ -452,7 +465,7 @@ function App() {
     <main className="page">
       <header className="topbar">
         <div><p className="eyebrow">ADMM Team Planner</p><h1>Backlog · Sprints · PM-Übersicht</h1><p className="muted">Aktueller Sprint: {activeSprint?.name || "Noch kein Sprint"} · Ziel: {activeSprint?.goal || "Noch kein Ziel"}</p></div>
-        <div className="userBox"><strong>{profile?.display_name || session.user.email}</strong><span>{profile?.role} · {displayArea(profile?.area)}</span><span>{unreadNotifications.length} neue Hinweise</span><button className="secondary" onClick={signOut}><LogOut size={16}/> Logout</button></div>
+        <UserBox profile={profile} email={session.user.email} unreadCount={unreadNotifications.length} patchProfile={patchProfile} signOut={signOut} displayArea={displayArea}/>
       </header>
 
       <section className="stats">
@@ -463,8 +476,8 @@ function App() {
       </section>
 
       <section className="levelCard">
-        <div><h2>{activeSprint?.goal || "Sprint-Ziel fehlt"}</h2><p>{nextLevel ? `Noch ${nextLevel.needed - doneTasks.length} erledigte Aufgaben bis Level ${nextLevel.level}: ${nextLevel.title}` : "Maximallevel erreicht."}</p></div>
-        <div className="capacity"><strong>{plannedPoints}/{activeSprint?.capacity_points || 0}</strong><span>Story Points geplant</span></div>
+        <div><h2>{activeSprint?.goal || "Sprint-Ziel fehlt"}</h2><p>Level {currentLevel.level}: Nach jedem abgeschlossenen Sprint steigt das Level um 1.</p></div>
+        <div className="capacity"><strong>{activeSprintPoints.done}/{activeSprintPoints.total}</strong><span>Story Points erledigt</span></div>
       </section>
 
       <nav className="tabs">
@@ -473,7 +486,7 @@ function App() {
             {id === "area" ? `${displayArea(profile?.area)}-Übersicht` : labelForTab(id)}
           </button>
         ))}
-        {profile?.is_pm && <button className={tab === "pm" ? "active" : ""} onClick={() => setTab("pm")}>PM-Dashboard</button>}
+        
       </nav>
 
       {tab === "dashboard" && <Dashboard activeSprint={activeSprint} tasks={tasks} sprintTasks={sprintTasks} overdueTasks={overdueTasks} orders={orders} blockers={blockers} currentLevel={currentLevel} plannedPoints={plannedPoints} />}
@@ -487,7 +500,6 @@ function App() {
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "gantt" && <Gantt tasks={tasks} />}
-      {tab === "pm" && profile?.is_pm && <PmDashboard overdueTasks={overdueTasks} tasks={tasks} blockers={blockers} orders={orders} activeSprint={activeSprint} plannedPoints={plannedPoints} assigneesOf={assigneesOf} nameOf={nameOf} patchTask={patchTask} />}
     </main>
   );
 }
@@ -540,6 +552,43 @@ function personTone(profileId, profiles = []) {
   const index = Math.max(0, profiles.findIndex(p => p.id === profileId));
   return `person-${(index % 10) + 1}`;
 }
+function sprintLevel(sprints) {
+  return sprints.filter(s => s.status === "Abgeschlossen").length + 1;
+}
+function sprintPoints(tasks, sprintId) {
+  const sprintTasks = tasks.filter(t => t.sprint_id === sprintId);
+  const total = sprintTasks.reduce((sum, t) => sum + Number(t.points || 0), 0);
+  const done = sprintTasks.filter(t => t.status === "Done").reduce((sum, t) => sum + Number(t.points || 0), 0);
+  return { done, total };
+}
+function getTaskRange(tasks) {
+  const dates = tasks.flatMap(t => [t.planned_start, t.planned_end || t.deadline]).filter(Boolean).sort();
+  return { start: dates[0], end: dates[dates.length - 1] };
+}
+function daysBetweenDates(start, end) {
+  const result = [];
+  if (!start || !end) return result;
+  const s = new Date(start); const e = new Date(end);
+  s.setHours(12,0,0,0); e.setHours(12,0,0,0);
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)) result.push(d.toISOString().slice(0,10));
+  return result;
+}
+function dateToColumn(date, days) {
+  const index = days.indexOf(date);
+  return index >= 0 ? index + 2 : 2;
+}
+function buildBurndownData(sprint, tasks) {
+  const sprintTasks = tasks.filter(t => t.sprint_id === sprint.id);
+  const total = sprintTasks.reduce((sum,t)=>sum+Number(t.points||0),0);
+  const done = sprintTasks.filter(t => t.status === "Done").reduce((sum,t)=>sum+Number(t.points||0),0);
+  const dates = daysBetweenDates(sprint.start_date, sprint.end_date);
+  if (!dates.length) return [{date:"Heute", remaining: Math.max(0,total-done)}];
+  return dates.map((date, index) => {
+    const progress = dates.length === 1 ? 1 : index / (dates.length - 1);
+    const estimatedDone = Math.round(done * progress);
+    return {date, remaining: Math.max(0, total - estimatedDone)};
+  });
+}
 function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() - new Date(dateString)) / (1000*60*60*24))); }
 function canMoveTask(task, newStatus, profile, taskAssignees, deps) {
   if (!profile) return { ok: false, message: "Bitte einloggen." };
@@ -556,13 +605,34 @@ function emptyTask(){return{title:"",description:"",owner_id:"",assignee_ids:[],
 function emptySprint(){return{name:"",goal:"",start_date:"",end_date:"",status:"Geplant",capacity_points:0}}
 function emptyOrder(){return{name:"",description:"",shop:"",order_number:"",quantity:"1",price:"",supplier_link:"",owner_id:"",status:"Benötigt"}}
 function emptyBlocker(){return{question:"",tried:"",needed_from:""}}
-function emptySchedule(){return{title:"",task_id:"",start_date:new Date().toISOString().slice(0,10),end_date:"",notes:""}}
+function emptySchedule(){return{title:"",task_id:"",start_date:new Date().toISOString().slice(0,10),end_date:"",notes:"",visibility:"private"}}
 function emptyMeeting(){return{sprint_id:"",meeting_type:"Weekly",title:"",meeting_date:new Date().toISOString().slice(0,10),participants:"",decisions:"",open_points:"",next_steps:""}}
 function Stat({icon,label,value,danger}){return <div className={danger?"stat dangerStat":"stat"}><div className="statIcon">{icon}</div><div><strong>{value}</strong><span>{label}</span></div></div>}
 function Card({title,children}){return <section className="card"><h2>{title}</h2>{children}</section>}
 
+function UserBox({profile,email,unreadCount,patchProfile,signOut,displayArea}) {
+  const [editing,setEditing] = useState(false);
+  const [draft,setDraft] = useState({display_name: profile?.display_name || "", role: profile?.role || "Team Member"});
+  async function save() {
+    await patchProfile({display_name: draft.display_name, role: draft.role});
+    setEditing(false);
+  }
+  return <div className="userBox">
+    {!editing ? <>
+      <strong>{profile?.display_name || email}</strong>
+      <span>{profile?.role} · {displayArea(profile?.area)}</span>
+      <span>{unreadCount} neue Hinweise</span>
+      <div className="buttonRow"><button className="secondary" onClick={()=>setEditing(true)}>Profil bearbeiten</button><button className="secondary" onClick={signOut}><LogOut size={16}/> Logout</button></div>
+    </> : <>
+      <input value={draft.display_name} onChange={e=>setDraft({...draft,display_name:e.target.value})} placeholder="Name"/>
+      <select value={draft.role} onChange={e=>setDraft({...draft,role:e.target.value})}>{roleOptions.map(role=><option key={role} value={role}>{role}</option>)}</select>
+      <div className="buttonRow"><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></div>
+    </>}
+  </div>
+}
+
 function Dashboard({activeSprint,tasks,sprintTasks,overdueTasks,orders,blockers,currentLevel,plannedPoints}) {
-  return <section className="grid two"><Card title="Projektstatus"><ul className="checkList"><li>Aktueller Sprint: {activeSprint?.name || "-"}</li><li>Sprintziel: {activeSprint?.goal || "-"}</li><li>Sprint-Aufgaben: {sprintTasks.length}</li><li>Erledigte Aufgaben gesamt: {tasks.filter(t=>t.status==="Done").length}</li><li>Team-Level: {currentLevel.title}</li><li>Story Points geplant: {plannedPoints}/{activeSprint?.capacity_points || 0}</li></ul></Card><Card title="Risiken"><ul className="checkList"><li>Überfällig: {overdueTasks.length}</li><li>Offene Bestellungen: {orders.filter(o=>o.status!=="Angekommen").length}</li><li>Offene Blocker: {blockers.filter(b=>b.status!=="Gelöst").length}</li></ul></Card></section>
+  return <section className="grid two"><Card title="Projektstatus"><ul className="checkList"><li>Aktueller Sprint: {activeSprint?.name || "-"}</li><li>Sprintziel: {activeSprint?.goal || "-"}</li><li>Sprint-Aufgaben: {sprintTasks.length}</li><li>Erledigte Aufgaben gesamt: {tasks.filter(t=>t.status==="Done").length}</li><li>Team-Level: Level {currentLevel.level}</li><li>Story Points geplant: {plannedPoints}/{activeSprint?.capacity_points || 0}</li></ul></Card><Card title="Risiken"><ul className="checkList"><li>Überfällig: {overdueTasks.length}</li><li>Offene Bestellungen: {orders.filter(o=>o.status!=="Angekommen").length}</li><li>Offene Blocker: {blockers.filter(b=>b.status!=="Gelöst").length}</li></ul></Card></section>
 }
 
 function Backlog({tasks,profiles,sprints,activeSprint,form,setForm,addTask,addTaskToSprint,deleteTask}) {
@@ -572,16 +642,10 @@ function Backlog({tasks,profiles,sprints,activeSprint,form,setForm,addTask,addTa
     </Card>
     <div>
       <h2>Backlog nach Priorität</h2>
+      <p className="muted">Alle Aufgaben bleiben sichtbar. Klicke auf eine Aufgabe, um Details zu sehen.</p>
       <div className="taskList">
         {tasks.map(task=>
-          <BacklogTaskCard
-            key={task.id}
-            task={task}
-            profiles={profiles}
-            activeSprint={activeSprint}
-            addTaskToSprint={addTaskToSprint}
-            deleteTask={deleteTask}
-          />
+          <BacklogTaskCard key={task.id} task={task} profiles={profiles} activeSprint={activeSprint} addTaskToSprint={addTaskToSprint} deleteTask={deleteTask}/>
         )}
       </div>
     </div>
@@ -589,6 +653,7 @@ function Backlog({tasks,profiles,sprints,activeSprint,form,setForm,addTask,addTa
 }
 
 function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}) {
+  const [open,setOpen] = useState(false);
   const [editing,setEditing] = useState(false);
   const [draft,setDraft] = useState({
     title: task.title || "",
@@ -604,7 +669,6 @@ function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}
     done_definition: task.done_definition || "",
     evidence: task.evidence || ""
   });
-
   async function saveBacklogTask() {
     const { error } = await supabase.from("tasks").update({
       title: draft.title,
@@ -621,24 +685,26 @@ function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}
       done_definition: draft.done_definition,
       evidence: draft.evidence
     }).eq("id", task.id);
-
     if (error) alert(error.message);
     else setEditing(false);
   }
-
-  return <div className="itemCard">
-    {!editing ? <>
-      <div className="row">
-        <strong>{task.priority} · {task.title}</strong>
-        <div className="buttonRow">
-          <button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>In aktuellen Sprint</button>
-          <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button>
-          <button className="iconBtn" onClick={()=>deleteTask(task.id)} title="Aufgabe löschen"><Trash2 size={16}/></button>
-        </div>
+  return <div className="itemCard compactTask">
+    <div className="row clickable" onClick={()=>setOpen(!open)}>
+      <strong>{task.title}</strong>
+      <span className="badge">{task.priority} · {task.points} SP</span>
+    </div>
+    {open && !editing && <>
+      <p>{task.description || "Keine Beschreibung."}</p>
+      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline || "offen"} · Zeitraum {task.planned_start || "offen"} → {task.planned_end || task.deadline || "offen"}</p>
+      <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
+      <p><b>Evidence:</b> {task.evidence || "-"}</p>
+      <div className="buttonRow">
+        <button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>In aktuellen Sprint</button>
+        <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button>
+        <button className="iconBtn" onClick={()=>deleteTask(task.id)} title="Aufgabe löschen"><Trash2 size={16}/></button>
       </div>
-      <p>{task.description}</p>
-      <p className="muted">{task.discipline} · {task.work_type} · {task.points} SP · Deadline {task.deadline || "offen"}</p>
-    </> : <div className="form">
+    </>}
+    {open && editing && <div className="form">
       <input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Titel"/>
       <textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Beschreibung"/>
       <select value={draft.owner_id} onChange={e=>setDraft({...draft,owner_id:e.target.value})}>
@@ -646,36 +712,45 @@ function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}
         {profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}
       </select>
       <div className="formRow">
-        <select value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value})}>
-          {priorities.map(p=><option key={p}>{p}</option>)}
-        </select>
-        <select value={draft.points} onChange={e=>setDraft({...draft,points:Number(e.target.value)})}>
-          {storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}
-        </select>
+        <select value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select>
+        <select value={draft.points} onChange={e=>setDraft({...draft,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select>
       </div>
-      <select value={draft.discipline} onChange={e=>setDraft({...draft,discipline:e.target.value})}>
-        {disciplines.map(d=><option key={d}>{d}</option>)}
-      </select>
-      <select value={draft.work_type} onChange={e=>setDraft({...draft,work_type:e.target.value})}>
-        {workTypes.map(w=><option key={w}>{w}</option>)}
-      </select>
-      <div className="formRow">
-        <input type="date" value={draft.planned_start || ""} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/>
-        <input type="date" value={draft.planned_end || ""} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/>
-      </div>
+      <select value={draft.discipline} onChange={e=>setDraft({...draft,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select>
+      <select value={draft.work_type} onChange={e=>setDraft({...draft,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select>
+      <div className="formRow"><input type="date" value={draft.planned_start || ""} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/><input type="date" value={draft.planned_end || ""} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/></div>
       <input type="date" value={draft.deadline || ""} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
       <textarea placeholder="Definition of Done" value={draft.done_definition || ""} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
       <textarea placeholder="Evidence / Review-Doku" value={draft.evidence || ""} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
-      <div className="buttonRow">
-        <button className="primary" type="button" onClick={saveBacklogTask}>Speichern</button>
-        <button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button>
-      </div>
+      <div className="buttonRow"><button className="primary" type="button" onClick={saveBacklogTask}>Speichern</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button></div>
     </div>}
   </div>
 }
 
 function SprintBoard({sprints,activeSprint,setSelectedSprintId,tasks,profile,nameOf,assigneesOf,depsOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
-  return <section><div className="toolbar"><select value={activeSprint?.id || ""} onChange={e=>setSelectedSprintId(e.target.value)}>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><span>{activeSprint?.goal}</span></div><div className="kanban">{sprintColumns.map(col=><div className="column" key={col}><h3>{col}</h3>{tasks.filter(t=>t.status===col).map(task=><TaskCard key={task.id} task={task} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} comments={commentsOf(task.id)} files={filesOf(task.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} removeTaskFromSprint={removeTaskFromSprint}/>)}</div>)}</div></section>
+  const points = activeSprint ? sprintPoints(tasks, activeSprint.id) : {done:0,total:0};
+  return <section>
+    <div className="toolbar">
+      <select value={activeSprint?.id || ""} onChange={e=>setSelectedSprintId(e.target.value)}>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+      <span>{activeSprint?.goal}</span>
+      <strong>{points.done}/{points.total} Story Points</strong>
+    </div>
+    {activeSprint && <BurndownChart sprint={activeSprint} tasks={tasks}/>}
+    <div className="kanban">{sprintColumns.map(col=><div className="column" key={col}><h3>{col}</h3>{tasks.filter(t=>t.status===col).map(task=><TaskCard key={task.id} task={task} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} comments={commentsOf(task.id)} files={filesOf(task.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} removeTaskFromSprint={removeTaskFromSprint}/>)}</div>)}</div>
+  </section>
+}
+function BurndownChart({sprint,tasks}) {
+  const data = buildBurndownData(sprint, tasks);
+  const max = Math.max(1, ...data.map(d=>Number(d.remaining || 0)));
+  const points = data.map((d,i)=>{
+    const x = data.length === 1 ? 10 : 10 + (i/(data.length-1))*80;
+    const y = 90 - (Number(d.remaining || 0)/max)*75;
+    return `${x},${y}`;
+  }).join(" ");
+  return <section className="card miniBurn">
+    <div className="row"><h2>Burndown Chart</h2><span className="muted">Offene Story Points</span></div>
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={points} fill="none" stroke="currentColor" strokeWidth="3"/></svg>
+    <div className="chartLabels"><span>{data[0]?.date}</span><span>{data[data.length-1]?.date}</span></div>
+  </section>
 }
 
 function SprintHistory({sprints,tasks,meetings,setSelectedSprintId}) {
@@ -831,7 +906,7 @@ function TeamCalendar({sprints,tasks,profiles,assigneesOf,nameOf}) {
 function MyCalendar({tasks,schedule,form,setForm,addSchedule,deleteSchedule}) {
   const items = [
     ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.status} · ${t.discipline || t.area}`, tone:"task" })),
-    ...schedule.map(s => ({ id:`schedule-${s.id}`, type:"Eigener Termin", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"schedule" })),
+    ...schedule.filter(s => (s.visibility || "private") === "private").map(s => ({ id:`schedule-${s.id}`, type:"Eigener Termin", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"schedule" })),
   ].filter(i=>i.start);
   return <section className="grid two">
     <Card title="Eigenen Termin hinzufügen"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/></Card>
@@ -1104,7 +1179,30 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
 }
 
 function Gantt({tasks}) {
-  return <section className="card"><h2>Gantt-Ansicht</h2><div className="gantt">{tasks.filter(t=>t.planned_start||t.deadline).map(t=><div className="ganttRow" key={t.id}><span>{t.title}</span><div className="ganttBar">{t.planned_start || "Start offen"} → {t.planned_end || t.deadline || "Ende offen"}</div></div>)}</div></section>
+  const datedTasks = tasks.filter(t=>t.planned_start || t.planned_end || t.deadline);
+  const range = getTaskRange(datedTasks);
+  const days = daysBetweenDates(range.start, range.end);
+  return <section className="card">
+    <h2>Gantt-Ansicht</h2>
+    <p className="muted">Balken zeigen, wann Aufgaben laufen und wo sie sich überschneiden.</p>
+    {datedTasks.length === 0 && <p className="empty">Noch keine Aufgaben mit Startdatum, Enddatum oder Deadline.</p>}
+    {datedTasks.length > 0 && <div className="realGantt" style={{gridTemplateColumns:`220px repeat(${Math.max(days.length,1)}, minmax(28px, 1fr))`}}>
+      <div className="ganttHead">Aufgabe</div>
+      {days.map(day=><div className="ganttDate" key={day}>{day.slice(5)}</div>)}
+      {datedTasks.map(task => {
+        const start = task.planned_start || task.deadline;
+        const end = task.planned_end || task.deadline || start;
+        const colStart = dateToColumn(start, days);
+        const colEnd = Math.max(colStart + 1, dateToColumn(end, days) + 1);
+        return <React.Fragment key={task.id}>
+          <div className="ganttTaskName">{task.title}</div>
+          <div className={`realGanttBar ${String(task.discipline || task.area || "").replaceAll(" ","-")}`} style={{gridColumn:`${colStart} / ${colEnd}`}}>
+            {task.points || 0} SP · {task.discipline || task.area}
+          </div>
+        </React.Fragment>
+      })}
+    </div>}
+  </section>
 }
 
 function PmDashboard({overdueTasks,tasks,blockers,orders,activeSprint,plannedPoints,assigneesOf,nameOf,patchTask}) {
@@ -1117,6 +1215,7 @@ function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
 }
 
 function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
+  const [open,setOpen]=useState(false);
   const [comment,setComment]=useState("");
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({
@@ -1126,63 +1225,45 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
     discipline: task.discipline || task.area || "Software",
     work_type: task.work_type || "Organisation",
     deadline: task.deadline || "",
-    points: task.points || 1,
+    points: task.points || 3,
     planned_start: task.planned_start || "",
     planned_end: task.planned_end || "",
     done_definition: task.done_definition || "",
     evidence: task.evidence || ""
   });
   const taskAssignees=assigneesOf(task.id);
-  const canDelete=true;
   const deps=depsOf(task.id);
   async function saveEdit() {
-    await patchTask(task.id, {
-      ...draft,
-      area: draft.discipline,
-      points: Number(draft.points || 1),
-      deadline: draft.deadline || null,
-      planned_start: draft.planned_start || null,
-      planned_end: draft.planned_end || null,
-    });
+    await patchTask(task.id, {...draft, area: draft.discipline, points: Number(draft.points || 3), deadline: draft.deadline || null, planned_start: draft.planned_start || null, planned_end: draft.planned_end || null});
     setEditing(false);
   }
   return <div className={task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done"?"taskCard overdue":"taskCard"}>
-    {!editing ? <>
-      <div className="row"><strong>{task.priority} · {task.title}</strong><span className="badge">{task.points} SP</span></div>
+    <div className="row clickable" onClick={()=>setOpen(!open)}><strong>{task.title}</strong><span className="badge">{task.priority} · {task.points} SP</span></div>
+    {open && !editing && <>
       <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"offen"}</p>
       <p className="muted">Verantwortlich: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p>
       <p>{task.description}</p>
       {deps.length>0&&<p className="muted"><GitBranch size={14}/> Abhängig von: {deps.map(d=>d.title).join(", ")}</p>}
       <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
-      <p><b>Evidence / Review-Doku:</b> {task.evidence || "-"}</p>
-    </> : <div className="form">
+      <p><b>Evidence:</b> {task.evidence || "-"}</p>
+    </>}
+    {open && editing && <div className="form">
       <input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/>
       <textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/>
-      <div className="formRow">
-        <select value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select>
-        <select value={draft.points} onChange={e=>setDraft({...draft,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select>
-      </div>
+      <div className="formRow"><select value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={draft.points} onChange={e=>setDraft({...draft,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select></div>
       <select value={draft.discipline} onChange={e=>setDraft({...draft,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select>
       <select value={draft.work_type} onChange={e=>setDraft({...draft,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select>
-      <div className="formRow">
-        <input type="date" value={draft.planned_start} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/>
-        <input type="date" value={draft.planned_end} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/>
-      </div>
+      <div className="formRow"><input type="date" value={draft.planned_start} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/><input type="date" value={draft.planned_end} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/></div>
       <input type="date" value={draft.deadline} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
       <textarea placeholder="Definition of Done" value={draft.done_definition} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
       <textarea placeholder="Evidence / Review-Doku" value={draft.evidence} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
       <div className="buttonRow"><button className="primary" type="button" onClick={saveEdit}>Speichern</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button></div>
     </div>}
-    <div className="miniSection"><h4><Paperclip size={15}/> Dateien</h4><input type="file" onChange={e=>uploadTaskFile(task.id,e.target.files?.[0])}/>{files.map(f=><a key={f.id} href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>)}</div>
-    <div className="miniSection"><h4><MessageCircle size={15}/> Kommentare</h4>{comments.map(c=><p key={c.id} className="comment"><b>{nameOf(c.profile_id)}:</b> {c.body}</p>)}<div className="formRow"><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Kommentar"/><button type="button" className="secondary" onClick={()=>addComment(task.id,comment,()=>setComment(""))}>Senden</button></div></div>
-    <div className="row">
-      <select value={task.status} onChange={e=>moveTask(task,e.target.value)}>{sprintColumns.map(c=><option key={c}>{c}</option>)}</select>
-      <div className="buttonRow">
-        <button className="secondary" type="button" onClick={()=>setEditing(!editing)}>Bearbeiten</button>
-        {removeTaskFromSprint&&<button className="secondary" onClick={()=>removeTaskFromSprint(task.id)}>Zurück ins Backlog</button>}
-        {canDelete&&<button className="iconBtn" onClick={()=>deleteTask(task.id)}><Trash2 size={16}/></button>}
-      </div>
-    </div>
+    {open && <>
+      <div className="miniSection"><h4><Paperclip size={15}/> Dateien</h4><input type="file" onChange={e=>uploadTaskFile(task.id,e.target.files?.[0])}/>{files.map(f=><a key={f.id} href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>)}</div>
+      <div className="miniSection"><h4><MessageCircle size={15}/> Kommentare</h4>{comments.map(c=><p key={c.id} className="comment"><b>{nameOf(c.profile_id)}:</b> {c.body}</p>)}<div className="formRow"><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Kommentar"/><button type="button" className="secondary" onClick={()=>addComment(task.id,comment,()=>setComment(""))}>Senden</button></div></div>
+      <div className="row"><select value={task.status} onChange={e=>moveTask(task,e.target.value)}>{sprintColumns.map(c=><option key={c}>{c}</option>)}</select><div className="buttonRow"><button className="secondary" type="button" onClick={()=>setEditing(!editing)}>Bearbeiten</button>{removeTaskFromSprint&&<button className="secondary" onClick={()=>removeTaskFromSprint(task.id)}>Zurück ins Backlog</button>}<button className="iconBtn" onClick={()=>deleteTask(task.id)}><Trash2 size={16}/></button></div></div>
+    </>}
   </div>
 }
 
@@ -1199,7 +1280,7 @@ function FileBox({title,files,onUpload,onDelete}) {
 }
 
 function OrderForm({form,setForm,profiles,submit}){return <form className="form" onSubmit={submit}><input placeholder="Was muss bestellt werden?" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Beschreibung" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Lieferant / Shop" value={form.shop} onChange={e=>setForm({...form,shop:e.target.value})}/><input placeholder="Bestellnummer" value={form.order_number} onChange={e=>setForm({...form,order_number:e.target.value})}/><input placeholder="Link" value={form.supplier_link} onChange={e=>setForm({...form,supplier_link:e.target.value})}/><input placeholder="Menge" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/><input placeholder="Preis" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Verantwortlich</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><button className="primary"><Package size={18}/> Bestellung hinzufügen</button></form>}
-function ScheduleForm({form,setForm,tasks,submit}){return <form className="form" onSubmit={submit}><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select value={form.task_id} onChange={e=>setForm({...form,task_id:e.target.value})}><option value="">Ohne Aufgabe</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><textarea placeholder="Notizen" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><button className="primary"><CalendarDays size={18}/> Eintragen</button></form>}
+function ScheduleForm({form,setForm,tasks,submit}){return <form className="form" onSubmit={submit}><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select value={form.task_id} onChange={e=>setForm({...form,task_id:e.target.value})}><option value="">Ohne Aufgabe</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><textarea placeholder="Notizen" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><select value={form.visibility || "private"} onChange={e=>setForm({...form,visibility:e.target.value})}><option value="private">Eigener Termin</option><option value="group">Gruppentermin</option></select><button className="primary"><CalendarDays size={18}/> Eintragen</button></form>}
 function SprintForm({form,setForm,submit}){return <form className="form" onSubmit={submit}><input placeholder="Sprintname" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Sprintziel" value={form.goal} onChange={e=>setForm({...form,goal:e.target.value})}/><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><input type="number" placeholder="Kapazität Story Points" value={form.capacity_points} onChange={e=>setForm({...form,capacity_points:Number(e.target.value)})}/><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(s=><option key={s}>{s}</option>)}</select><button className="primary"><Rocket size={18}/> Sprint speichern</button></form>}
 function MeetingForm({form,setForm,sprints,submit}){return <form className="form" onSubmit={submit}><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value})}><option value="">Kein Sprint</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select value={form.meeting_type} onChange={e=>setForm({...form,meeting_type:e.target.value})}>{meetingTypes.map(t=><option key={t}>{t}</option>)}</select><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><input type="date" value={form.meeting_date} onChange={e=>setForm({...form,meeting_date:e.target.value})}/><textarea placeholder="Teilnehmer" value={form.participants} onChange={e=>setForm({...form,participants:e.target.value})}/><textarea placeholder="Entscheidungen" value={form.decisions} onChange={e=>setForm({...form,decisions:e.target.value})}/><textarea placeholder="Offene Punkte" value={form.open_points} onChange={e=>setForm({...form,open_points:e.target.value})}/><textarea placeholder="Nächste Schritte" value={form.next_steps} onChange={e=>setForm({...form,next_steps:e.target.value})}/><button className="primary"><FileText size={18}/> Protokoll speichern</button></form>}
 createRoot(document.getElementById("root")).render(<App />);
