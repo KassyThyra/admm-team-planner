@@ -82,6 +82,7 @@ function App() {
   const [schedule, setSchedule] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [milestones, setMilestones] = useState([]);
   const [genericFiles, setGenericFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(() => localStorage.getItem("admm-active-tab") || "dashboard");
@@ -93,6 +94,7 @@ function App() {
   const [blockerForm, setBlockerForm] = useState(emptyBlocker());
   const [scheduleForm, setScheduleForm] = useState(emptySchedule());
   const [meetingForm, setMeetingForm] = useState(emptyMeeting());
+  const [milestoneForm, setMilestoneForm] = useState(emptyMilestone());
   const [selectedSprintId, setSelectedSprintId] = useState("");
   const [message, setMessage] = useState("");
 
@@ -124,7 +126,7 @@ function App() {
 
   async function loadAll() {
     if (!session?.user) return;
-    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes, genericFilesRes] = await Promise.all([
+    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes, genericFilesRes, milestonesRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
       supabase.from("profiles").select("*").order("created_at", { ascending: true }),
       supabase.from("tasks").select("*").order("priority", { ascending: true }).order("created_at", { ascending: false }),
@@ -139,6 +141,7 @@ function App() {
       supabase.from("meetings").select("*").order("meeting_date", { ascending: false }),
       supabase.from("notifications").select("*").order("created_at", { ascending: false }),
       supabase.from("generic_files").select("*").order("created_at", { ascending: false }),
+      supabase.from("milestones").select("*").order("target_date", { ascending: true }),
     ]);
     if (!profileRes.data) {
       const fallbackName = session.user.email?.split("@")[0] || "Teammitglied";
@@ -158,7 +161,7 @@ function App() {
     setProfiles(profilesRes.data || []); setTasks(tasksRes.data || []); setSprints(sprintsRes.data || []);
     setAssignees(assigneesRes.data || []); setDependencies(depsRes.data || []); setComments(commentsRes.data || []);
     setFiles(filesRes.data || []); setOrders(ordersRes.data || []); setBlockers(blockersRes.data || []);
-    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []);
+    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []); setMilestones(milestonesRes.data || []);
     if (!selectedSprintId) {
       const active = (sprintsRes.data || []).find(s => s.status === "Active") || (sprintsRes.data || [])[0];
       if (active) setSelectedSprintId(active.id);
@@ -289,7 +292,7 @@ function App() {
   }
   async function addTaskToSprint(taskId, sprintId) {
     if (!sprintId) {
-      alert("Es gibt noch keinen aktuellen Sprint. Lege zuerst unter 'Sprints & Minutes' einen Sprint an und setze ihn auf 'Active'.");
+      alert("Es gibt noch keinen aktuellen Sprint. Lege zuerst unter 'Sprints & Meetings' einen Sprint an und setze ihn auf 'Active'.");
       return;
     }
     const { error } = await supabase
@@ -422,8 +425,30 @@ function App() {
     if (error) alert(error.message);
   }
   async function deleteMeeting(id) {
-    if (!confirm("Delete this meeting minutes entry?")) return;
+    if (!confirm("Delete this meeting meetings entry?")) return;
     const { error } = await supabase.from("meetings").delete().eq("id", id);
+    if (error) alert(error.message);
+  }
+  async function addMilestone(e) {
+    e.preventDefault();
+    if (!milestoneForm.title.trim()) return;
+    const { error } = await supabase.from("milestones").insert({
+      title: milestoneForm.title,
+      target_date: milestoneForm.target_date || null,
+      description: milestoneForm.description || "",
+      status: milestoneForm.status || "Planned",
+      created_by: profile?.id
+    });
+    if (error) alert(error.message);
+    else setMilestoneForm(emptyMilestone());
+  }
+  async function patchMilestone(id, patch) {
+    const { error } = await supabase.from("milestones").update(patch).eq("id", id);
+    if (error) alert(error.message);
+  }
+  async function deleteMilestone(id) {
+    if (!confirm("Delete this milestone?")) return;
+    const { error } = await supabase.from("milestones").delete().eq("id", id);
     if (error) alert(error.message);
   }
   async function notifyMany(profileIds, title, body) {
@@ -482,7 +507,7 @@ function App() {
       </section>
 
       <nav className="tabs">
-        {["dashboard","backlog","sprint","history","me","calendar","orders","blockers","meetings","gantt"].map(id => (
+        {["dashboard","backlog","sprint","history","me","calendar","orders","blockers","meetings","gantt","milestones"].map(id => (
           <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
             {id === "area" ? `${displayArea(profile?.area)}-Übersicht` : labelForTab(id)}
           </button>
@@ -501,12 +526,13 @@ function App() {
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "gantt" && <Gantt tasks={tasks} />}
+      {tab === "milestones" && <Milestones sprints={sprints} milestones={milestones} form={milestoneForm} setForm={setMilestoneForm} addMilestone={addMilestone} patchMilestone={patchMilestone} deleteMilestone={deleteMilestone} />}
     </main>
   );
 }
 
 function labelForTab(id) {
-  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Current Sprint", history:"Sprint History", me:"My Area", orders:"Orders", blockers:"Questions & Blockers", calendar:"Team Calendar", meetings:"Sprints & Minutes", gantt:"Gantt"})[id];
+  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Current Sprint", history:"Sprint History", me:"My Area", orders:"Orders", blockers:"Questions & Blockers", calendar:"Team Calendar", meetings:"Sprints & Meetings", gantt:"Gantt", milestones:"Milestones"})[id];
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function taskEndDate(task) {
@@ -623,6 +649,7 @@ function emptyOrder(){return{name:"",description:"",shop:"",order_number:"",quan
 function emptyBlocker(){return{question:"",tried:"",needed_from:""}}
 function emptySchedule(){return{title:"",task_id:"",start_date:new Date().toISOString().slice(0,10),end_date:"",notes:"",visibility:"private"}}
 function emptyMeeting(){return{sprint_id:"",meeting_type:"Weekly",title:"",meeting_date:new Date().toISOString().slice(0,10),participants:"",decisions:"",open_points:"",next_steps:""}}
+function emptyMilestone(){return{title:"",target_date:new Date().toISOString().slice(0,10),description:"",status:"Planned"}}
 function Stat({icon,label,value,danger}){return <div className={danger?"stat dangerStat":"stat"}><div className="statIcon">{icon}</div><div><strong>{value}</strong><span>{label}</span></div></div>}
 function Card({title,children}){return <section className="card"><h2>{title}</h2>{children}</section>}
 
@@ -808,7 +835,7 @@ function BurndownChart({sprint,tasks}) {
 }
 
 function SprintHistory({sprints,tasks,meetings,setSelectedSprintId}) {
-  return <section className="taskList">{sprints.map(s=>{const st=tasks.filter(t=>t.sprint_id===s.id); const done=st.filter(t=>t.status==="Done").length; return <div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><button className="secondary" onClick={()=>setSelectedSprintId(s.id)}>Öffnen</button></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · {s.status} · {done}/{st.length} erledigt</p><p><b>Minutes:</b> {meetings.filter(m=>m.sprint_id===s.id).length}</p></div>})}</section>
+  return <section className="taskList">{sprints.map(s=>{const st=tasks.filter(t=>t.sprint_id===s.id); const done=st.filter(t=>t.status==="Done").length; return <div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><button className="secondary" onClick={()=>setSelectedSprintId(s.id)}>Öffnen</button></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · {s.status} · {done}/{st.length} erledigt</p><p><b>Meetings:</b> {meetings.filter(m=>m.sprint_id===s.id).length}</p></div>})}</section>
 }
 
 function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
@@ -910,7 +937,12 @@ function CalendarGrid({ items, title }) {
     <div className={mode === "week" ? "calendarGrid week" : "calendarGrid month"}>
       {days.map(day => {
         const dayKey = fmtDate(day);
-        const dayItems = visibleItems.filter(item => item.start <= dayKey && (item.end || item.start) >= dayKey);
+        const dayItems = visibleItems
+          .filter(item => item.start <= dayKey && (item.end || item.start) >= dayKey)
+          .sort((a,b) => {
+            const rank = item => item.tone === "privateAppointment" || item.tone === "groupAppointment" ? 0 : item.tone === "sprint" ? 1 : 2;
+            return rank(a) - rank(b);
+          });
         return <div className="calendarDay" key={dayKey}>
           <div className="calendarDate">{day.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })}</div>
           {dayItems.map(item => <div className={`calendarPill ${item.tone || "task"}`} key={`${dayKey}-${item.id}`}>
@@ -1156,11 +1188,11 @@ function EditableBlocker({blocker,patchBlocker,deleteBlocker,files,uploadGeneric
 
 function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,patchMeeting,deleteMeeting,meetings,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
   return <section className="grid two">
-    <div className="stack"><Card title="Create Sprint"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting Minutes"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
+    <div className="stack"><Card title="Create Sprint"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
     <div className="stack">
       <h2>Sprints</h2>
       {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
-      <h2>Minutes</h2>
+      <h2>Meetings</h2>
       {meetings.map(m => <EditableMeeting key={m.id} meeting={m} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
@@ -1229,11 +1261,11 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
       <textarea value={draft.next_steps || ""} onChange={e=>setDraft({...draft,next_steps:e.target.value})} placeholder="Next Steps"/>
     </div>}
 
-    <FileBox title="Files for minutes" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
+    <FileBox title="Files for meeting" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
 
     <div className="buttonRow">
       {!editing
-        ? <button className="secondary" type="button" onClick={()=>setEditing(true)}>Edit Minutes</button>
+        ? <button className="secondary" type="button" onClick={()=>setEditing(true)}>Edit Meeting</button>
         : <>
             <button className="primary" type="button" onClick={save}>Save</button>
             <button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button>
@@ -1249,28 +1281,33 @@ function Gantt({tasks}) {
     .sort((a,b)=>String(a.planned_start || a.deadline || "").localeCompare(String(b.planned_start || b.deadline || "")));
   const range = getTaskRange(datedTasks);
   const days = daysBetweenDates(range.start, range.end);
+  const weeks = buildGanttWeeks(days);
 
   return <section className="card">
     <h2>Gantt View</h2>
-    <p className="muted">Each bar shows when a task is scheduled. Overlaps are visible because tasks share the same date grid.</p>
+    <p className="muted">Bars show when each task is scheduled. Overlapping bars appear in the same calendar grid.</p>
     {datedTasks.length === 0 && <p className="empty">No tasks with start/end date or deadline yet.</p>}
-    {datedTasks.length > 0 && <div className="ganttScroll">
-      <div className="ganttTimeline" style={{gridTemplateColumns:`260px repeat(${Math.max(days.length,1)}, 38px)`}}>
-        <div className="ganttSticky ganttHeaderCell">Task</div>
-        {days.map(day => <div key={day} className={day === new Date().toISOString().slice(0,10) ? "ganttDate today" : "ganttDate"}>{day.slice(5)}</div>)}
-        {datedTasks.map(task => {
+    {datedTasks.length > 0 && <div className="ganttMatrixScroll">
+      <div className="ganttMatrix" style={{gridTemplateColumns:`240px repeat(${weeks.length}, 90px)`}}>
+        <div className="ganttCorner">Task Name</div>
+        {weeks.map(w => <div className="ganttMonthHead" key={`month-${w.key}`}>{w.label}</div>)}
+        <div className="ganttSubCorner"></div>
+        {weeks.map(w => <div className="ganttWeekHead" key={`week-${w.key}`}>W{w.week}</div>)}
+
+        {datedTasks.map((task, rowIndex) => {
           const start = task.planned_start || task.deadline;
           const end = task.planned_end || task.deadline || start;
-          const colStart = dateToColumn(start, days);
-          const colEnd = Math.max(colStart + 1, dateToColumn(end, days) + 1);
+          const startWeek = weekIndexForDate(start, weeks);
+          const endWeek = Math.max(startWeek + 1, weekIndexForDate(end, weeks) + 1);
           return <React.Fragment key={task.id}>
-            <div className="ganttSticky ganttTaskLabel">
+            <div className={rowIndex % 2 === 0 ? "ganttTaskCell even" : "ganttTaskCell odd"}>
               <strong>{task.title}</strong>
               <span>{task.discipline || task.area} · {task.status} · {task.points || 0} SP</span>
             </div>
+            {weeks.map((w,i)=><div key={`${task.id}-${w.key}`} className={rowIndex % 2 === 0 ? "ganttGridCell even" : "ganttGridCell odd"}></div>)}
             <div
-              className={`ganttTaskBar ${String(task.discipline || task.area || "Task").replaceAll(" ","-")}`}
-              style={{gridColumn:`${colStart} / ${colEnd}`}}
+              className={`ganttMatrixBar ${String(task.discipline || task.area || "Task").replaceAll(" ","-")}`}
+              style={{gridColumn:`${startWeek + 2} / ${endWeek + 2}`, gridRow: `${(rowIndex * 1) + 3} / span 1`}}
               title={`${task.title}: ${start} → ${end}`}
             >
               {start} → {end}
@@ -1280,6 +1317,108 @@ function Gantt({tasks}) {
       </div>
     </div>}
   </section>
+}
+
+function buildGanttWeeks(days) {
+  if (!days.length) return [];
+  const weeks = [];
+  let current = null;
+  days.forEach(day => {
+    const d = new Date(day);
+    const monthLabel = d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    const week = Math.floor((d.getDate() - 1) / 7) + 1;
+    const key = `${d.getFullYear()}-${d.getMonth()+1}-${week}`;
+    if (!weeks.some(w => w.key === key)) {
+      weeks.push({key, label: monthLabel, week, start: day, end: day});
+    } else {
+      const existing = weeks.find(w => w.key === key);
+      existing.end = day;
+    }
+  });
+  return weeks;
+}
+function weekIndexForDate(date, weeks) {
+  if (!date || !weeks.length) return 0;
+  const idx = weeks.findIndex(w => date >= w.start && date <= w.end);
+  if (idx >= 0) return idx;
+  if (date < weeks[0].start) return 0;
+  return weeks.length - 1;
+}
+
+function Milestones({sprints,milestones,form,setForm,addMilestone,patchMilestone,deleteMilestone}) {
+  const sprintMilestones = [...sprints]
+    .filter(s => s.goal || s.end_date)
+    .sort((a,b)=>String(a.end_date || a.start_date || "").localeCompare(String(b.end_date || b.start_date || "")))
+    .map((s,index)=>({
+      id:`sprint-${s.id}`,
+      number:index+1,
+      title:s.goal || s.name,
+      date:s.end_date || s.start_date,
+      tag:s.name,
+      type:"sprint"
+    }));
+
+  return <section className="card">
+    <h2>Milestones</h2>
+    <p className="muted">Sprint goals are shown as milestones. You can add and edit additional final milestones.</p>
+
+    <div className="milestoneTimeline">
+      {sprintMilestones.map(m => <div className="milestoneNode sprint" key={m.id}>
+        <div className="milestoneCard">
+          <strong>#{m.number} Sprint Goal</strong>
+          <span>{m.title}</span>
+          <small>{m.date || "No date"} · {m.tag}</small>
+        </div>
+        <div className="milestoneDot"></div>
+      </div>)}
+      {milestones.map((m,index)=><EditableMilestone key={m.id} milestone={m} index={sprintMilestones.length + index + 1} patchMilestone={patchMilestone} deleteMilestone={deleteMilestone}/>)}
+    </div>
+
+    <Card title="Add Final Milestone">
+      <form className="form" onSubmit={addMilestone}>
+        <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Milestone title"/>
+        <input type="date" value={form.target_date || ""} onChange={e=>setForm({...form,target_date:e.target.value})}/>
+        <textarea value={form.description || ""} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Description"/>
+        <select value={form.status || "Planned"} onChange={e=>setForm({...form,status:e.target.value})}>
+          {["Planned","Active","Done"].map(s=><option key={s}>{s}</option>)}
+        </select>
+        <button className="primary">Add Milestone</button>
+      </form>
+    </Card>
+  </section>
+}
+
+function EditableMilestone({milestone,index,patchMilestone,deleteMilestone}) {
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState({...milestone});
+  async function save() {
+    await patchMilestone(milestone.id,{
+      title:draft.title || "",
+      target_date:draft.target_date || null,
+      description:draft.description || "",
+      status:draft.status || "Planned"
+    });
+    setEditing(false);
+  }
+  return <div className="milestoneNode custom">
+    {!editing ? <div className="milestoneCard">
+      <strong>#{index} Final Milestone</strong>
+      <span>{milestone.title}</span>
+      <small>{milestone.target_date || "No date"} · {milestone.status}</small>
+      <p>{milestone.description}</p>
+      <div className="buttonRow">
+        <button className="secondary" onClick={()=>setEditing(true)}>Edit</button>
+        <button className="iconBtn" onClick={()=>deleteMilestone(milestone.id)}><Trash2 size={14}/></button>
+      </div>
+    </div> : <div className="milestoneCard form">
+      <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
+      <input type="date" value={draft.target_date || ""} onChange={e=>setDraft({...draft,target_date:e.target.value})}/>
+      <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})}/>
+      <select value={draft.status || "Planned"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Planned","Active","Done"].map(s=><option key={s}>{s}</option>)}</select>
+      <div className="buttonRow"><button className="primary" type="button" onClick={save}>Save</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button></div>
+    </div>}
+    <div className="milestoneDot"></div>
+  </div>
 }
 
 function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {

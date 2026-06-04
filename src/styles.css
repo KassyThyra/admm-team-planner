@@ -477,3 +477,196 @@
 .dangerBorder {
   border: 2px solid #fecaca !important;
 }
+
+
+/* Final requested: meetings naming, orange appointments, image-style Gantt, milestone timeline */
+.calendarPill.privateAppointment,
+.calendarPill.groupAppointment,
+.legendChip.privateAppointment,
+.legendChip.groupAppointment {
+  background: #ffedd5 !important;
+  border-color: #fb923c !important;
+}
+
+.ganttMatrixScroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #d1d5db;
+  border-radius: 18px;
+  background: white;
+}
+
+.ganttMatrix {
+  display: grid;
+  min-width: max-content;
+  position: relative;
+}
+
+.ganttCorner,
+.ganttSubCorner {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background: #3f9489;
+  color: white;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  border: 1px solid #a7c7c1;
+}
+
+.ganttCorner {
+  grid-row: span 2;
+  min-height: 70px;
+  font-size: 16px;
+}
+
+.ganttMonthHead,
+.ganttWeekHead {
+  background: #3f9489;
+  color: white;
+  border: 1px solid #a7c7c1;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.ganttWeekHead {
+  font-size: 11px;
+}
+
+.ganttTaskCell {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  min-height: 88px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #c7d2d0;
+  background: #ecfdf5;
+}
+
+.ganttTaskCell.odd {
+  background: #fef9c3;
+}
+
+.ganttTaskCell span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.ganttGridCell {
+  min-height: 88px;
+  border: 1px solid #c7d2d0;
+  background: #dcfce7;
+}
+
+.ganttGridCell.odd {
+  background: #fef9c3;
+}
+
+.ganttMatrixBar {
+  z-index: 6;
+  align-self: center;
+  height: 28px;
+  margin: 0 6px;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 900;
+  overflow: hidden;
+  white-space: nowrap;
+  color: #111827;
+  box-shadow: 0 2px 5px rgba(15,23,42,.12);
+}
+
+.ganttMatrixBar.Software { background: #5bbf67; }
+.ganttMatrixBar.Electronics { background: #f7c544; }
+.ganttMatrixBar.Mechanics { background: #60a5fa; }
+.ganttMatrixBar.Systems-Engineering { background: #a78bfa; }
+.ganttMatrixBar.Testing { background: #fb923c; }
+.ganttMatrixBar.Manufacturing { background: #2dd4bf; }
+.ganttMatrixBar.Documentation { background: #f0abfc; }
+.ganttMatrixBar.Project-Management { background: #d1d5db; }
+
+.milestoneTimeline {
+  position: relative;
+  display: flex;
+  gap: 80px;
+  overflow-x: auto;
+  padding: 80px 24px 46px;
+  margin: 20px 0;
+  border-radius: 22px;
+  background: white;
+  border: 1px solid #e5e7eb;
+}
+
+.milestoneTimeline::after {
+  content: "";
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 54px;
+  height: 5px;
+  background: #111827;
+  border-radius: 999px;
+}
+
+.milestoneNode {
+  position: relative;
+  min-width: 190px;
+  display: grid;
+  justify-items: center;
+  z-index: 2;
+}
+
+.milestoneCard {
+  min-height: 94px;
+  width: 190px;
+  border-radius: 10px;
+  border-top: 4px solid #fb923c;
+  background: #fef3c7;
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+  box-shadow: 0 10px 24px rgba(15,23,42,.08);
+}
+
+.milestoneNode.custom .milestoneCard {
+  background: #dcfce7;
+  border-top-color: #22c55e;
+}
+
+.milestoneCard span {
+  font-size: 13px;
+}
+
+.milestoneCard small {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.milestoneDot {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: white;
+  border: 2px solid #fb923c;
+  position: absolute;
+  bottom: -1px;
+  z-index: 3;
+}
+
+.milestoneNode::before {
+  content: "";
+  position: absolute;
+  top: 94px;
+  bottom: 10px;
+  width: 1px;
+  background: #111827;
+}
