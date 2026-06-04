@@ -218,7 +218,7 @@ function App() {
   const activeSprintPoints = activeSprint ? sprintPoints(tasks, activeSprint.id) : {done:0,total:0};
   const myTaskIds = profile ? assignees.filter(a => a.profile_id === profile.id).map(a => a.task_id) : [];
   const myTasks = profile ? tasks.filter(t => t.owner_id === profile.id || myTaskIds.includes(t.id)) : [];
-  const mySchedule = profile ? schedule.filter(s => s.profile_id === profile.id) : [];
+  const mySchedule = profile ? schedule.filter(s => s.profile_id === profile.id || appointmentVisibility(s) === "group") : [];
   const unreadNotifications = profile ? notifications.filter(n => n.profile_id === profile.id && !n.is_read) : [];
 
   function nameOf(id) { return profiles.find(p => p.id === id)?.display_name || "Unassigned"; }
@@ -305,7 +305,7 @@ function App() {
   }
   async function addTaskToSprint(taskId, sprintId) {
     if (!sprintId) {
-      alert("Es gibt noch keinen aktuellen Sprint. Lege zuerst unter 'Sprints & Meetings' einen Sprint an und setze ihn auf 'Active'.");
+      alert("There is no current sprint yet. Create a sprint under Sprints & Meetings and set it to Active.");
       return;
     }
     const { error } = await supabase
@@ -577,8 +577,8 @@ function App() {
       {tab === "backlog" && <Backlog tasks={backlogTasks} profiles={profiles} sprints={sprints} activeSprint={activeSprint} form={taskForm} setForm={setTaskForm} addTask={addTask} addTaskToSprint={addTaskToSprint} deleteTask={deleteTask} />}
       {tab === "sprint" && <SprintBoard sprints={sprints} activeSprint={selectedSprint} setSelectedSprintId={setSelectedSprintId} tasks={sprintTasks} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} removeTaskFromSprint={removeTaskFromSprint} />}
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} setTab={setTab} />}
-      {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
-      {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} profiles={profiles} assigneesOf={assigneesOf} nameOf={nameOf} />}
+      {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} meetings={meetings} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
+      {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} meetings={meetings} profiles={profiles} assigneesOf={assigneesOf} nameOf={nameOf} />}
       {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
@@ -690,7 +690,7 @@ function buildBurndownData(sprint, tasks) {
   const total = sprintTasks.reduce((sum,t)=>sum+Number(t.points||0),0);
   const done = sprintTasks.filter(t => isDoneStatus(t.status)).reduce((sum,t)=>sum+Number(t.points||0),0);
   const dates = daysBetweenDates(sprint.start_date, sprint.end_date);
-  if (!dates.length) return [{date:"Heute", remaining: Math.max(0,total-done)}];
+  if (!dates.length) return [{date:"Today", remaining: Math.max(0,total-done)}];
   return dates.map((date, index) => {
     const progress = dates.length === 1 ? 1 : index / (dates.length - 1);
     const estimatedDone = Math.round(done * progress);
@@ -701,8 +701,8 @@ function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() 
 function canMoveTask(task, newStatus, profile, taskAssignees, deps) {
   if (!profile) return { ok: false, message: "Please sign in." };
   const isOwner = task.owner_id === profile.id || taskAssignees.some(p => p.id === profile.id);
-  if (!isOwner && !profile.is_pm) return { ok: false, message: "Nur Ownere oder PM dürfen diese Aufgabe verschieben." };
-  if (newStatus === "Doing" && (!task.description || !task.deadline)) return { ok: false, message: "Für Doing braucht die Aufgabe Description und Deadline." };
+  if (!isOwner && !profile.is_pm) return { ok: false, message: "Only owners or the PM may move this task." };
+  if (newStatus === "Doing" && (!task.description || !task.deadline)) return { ok: false, message: "To move to Doing, the task needs description and deadline." };
   if (newStatus === "Review" && (!task.done_definition || !task.evidence)) return { ok: false, message: "To move to Review, the task needs a Definition of Done and evidence/review notes." };
   if (newStatus === "Done" && task.status !== "Review") return { ok: false, message: "A task can only move to Done after Review." };
   if (newStatus === "Done" && deps.some(d => d.status !== "Done")) return { ok: false, message: "Dependencies are not Done yet." };
@@ -842,7 +842,7 @@ function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}
       <span className="badge">{task.priority} · {task.points} SP</span>
     </div>
     {open && !editing && <>
-      <p>{task.description || "Keine Description."}</p>
+      <p>{task.description || "No description."}</p>
       <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline || "open"} · Period {task.planned_start || "open"} → {task.planned_end || task.deadline || "open"}</p>
       <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
       <p><b>Evidence:</b> {task.evidence || "-"}</p>
@@ -920,15 +920,15 @@ function SprintHistory({sprints,tasks,meetings,setSelectedSprintId,setTab}) {
   </section>
 }
 
-function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
+function MyArea({profile,tasks,schedule,meetings,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
   return <section className="grid two">
     <div className="stack">
-      <MyCalendar tasks={tasks} schedule={schedule} form={form} setForm={setForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule}/>
+      <MyCalendar tasks={tasks} schedule={schedule} meetings={meetings} form={form} setForm={setForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule}/>
       <Card title="My Appointments as List">
         <div className="taskList">
           {schedule.map(s=><div className="itemCard" key={s.id}>
-            <div className="row"><strong>{s.title}</strong><button className="iconBtn" onClick={()=>deleteSchedule(s.id)} title="Zeitplan löschen"><Trash2 size={16}/></button></div>
-            <p className="muted">{s.start_date}{s.end_date?` bis ${s.end_date}`:""}</p><p>{s.notes}</p>
+            <div className="row"><strong>{s.title}</strong><button className="iconBtn" onClick={()=>deleteSchedule(s.id)} title="Delete appointment"><Trash2 size={16}/></button></div>
+            <p className="muted">{s.start_date}{s.end_date?` to ${s.end_date}`:""}</p><p>{s.notes}</p>
           </div>)}
         </div>
       </Card>
@@ -986,6 +986,7 @@ function shiftDate(date, mode, amount) {
 function CalendarGrid({ items, title }) {
   const [mode, setMode] = useState("month");
   const [viewDate, setViewDate] = useState(new Date());
+  const [openItemKey, setOpenItemKey] = useState("");
   const { start, end } = getCalendarRange(viewDate, mode);
 
   const days = [];
@@ -1002,6 +1003,12 @@ function CalendarGrid({ items, title }) {
 
   const monthTitle = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
+  function calendarRank(item) {
+    if (item.tone === "sprint") return 0;
+    if (item.tone === "meeting" || item.tone === "privateAppointment" || item.tone === "groupAppointment") return 1;
+    return 2;
+  }
+
   return <div className="calendarShell">
     <div className="calendarToolbar">
       <h2>{title}</h2>
@@ -1015,29 +1022,34 @@ function CalendarGrid({ items, title }) {
         <button className="secondary" type="button" onClick={() => setViewDate(shiftDate(viewDate, mode, 1))}>Next</button>
       </div>
     </div>
-    <p className="muted">{mode === "month" ? monthTitle : `${fmtDate(start)} bis ${fmtDate(end)}`}</p>
+    <p className="muted">{mode === "month" ? monthTitle : `${fmtDate(start)} to ${fmtDate(end)}`}</p>
     <div className={mode === "week" ? "calendarGrid week" : "calendarGrid month"}>
       {days.map(day => {
         const dayKey = fmtDate(day);
         const dayItems = visibleItems
           .filter(item => item.start <= dayKey && (item.end || item.start) >= dayKey)
-          .sort((a,b) => {
-            const rank = item => item.tone === "privateAppointment" || item.tone === "groupAppointment" ? 0 : item.tone === "sprint" ? 1 : 2;
-            return rank(a) - rank(b);
-          });
+          .sort((a,b) => calendarRank(a) - calendarRank(b) || String(a.title).localeCompare(String(b.title)));
         return <div className="calendarDay" key={dayKey}>
           <div className="calendarDate">{day.toLocaleDateString("en-US", { weekday: "short", day: "2-digit", month: "2-digit" })}</div>
-          {dayItems.map(item => <div className={`calendarPill ${item.tone || "task"}`} key={`${dayKey}-${item.id}`}>
-            <strong>{item.type}: {item.title}</strong>
-            <small>{item.meta}</small>
-          </div>)}
+          {dayItems.map(item => {
+            const itemKey = `${dayKey}-${item.id}`;
+            const isOpen = openItemKey === itemKey;
+            return <div className={`calendarPill ${item.tone || "task"}`} key={itemKey} onClick={() => setOpenItemKey(isOpen ? "" : itemKey)}>
+              <strong>{item.title}</strong>
+              {isOpen && <>
+                <small>{item.type}</small>
+                <small>{item.meta}</small>
+                <small>{item.start}{item.end && item.end !== item.start ? ` → ${item.end}` : ""}</small>
+              </>}
+            </div>
+          })}
         </div>
       })}
     </div>
   </div>
 }
 
-function TeamCalendar({sprints,tasks,schedule,profiles,assigneesOf,nameOf}) {
+function TeamCalendar({sprints,tasks,schedule,meetings,profiles,assigneesOf,nameOf}) {
   const items = [
     ...sprints.map(s => ({
       id:`sprint-${s.id}`,
@@ -1056,6 +1068,15 @@ function TeamCalendar({sprints,tasks,schedule,profiles,assigneesOf,nameOf}) {
       end:s.end_date || s.start_date,
       meta:s.notes || nameOf(s.profile_id),
       tone:"groupAppointment"
+    })),
+    ...meetings.map(m => ({
+      id:`meeting-${m.id}`,
+      type:"Meeting",
+      title:m.title,
+      start:m.meeting_date,
+      end:m.meeting_date,
+      meta:`${m.meeting_type || ""} ${m.participants ? "· " + m.participants : ""}`,
+      tone:"meeting"
     })),
     ...tasks.map(t => {
       const assigned = assigneesOf(t.id);
@@ -1082,44 +1103,16 @@ function TeamCalendar({sprints,tasks,schedule,profiles,assigneesOf,nameOf}) {
   </section>
 }
 
-function MyCalendar({tasks,schedule,form,setForm,addSchedule,deleteSchedule}) {
+function MyCalendar({tasks,schedule,meetings,form,setForm,addSchedule,deleteSchedule}) {
   const items = [
-    ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.status} · ${t.discipline || t.area}`, tone:"task" })),
+    ...tasks.map(t => ({ id:`task-${t.id}`, type:"Task", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.status} · ${t.discipline || t.area}`, tone:"task" })),
     ...schedule.filter(s => appointmentVisibility(s) === "private").map(s => ({ id:`schedule-${s.id}`, type:"Private Appointment", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"privateAppointment" })),
     ...schedule.filter(s => appointmentVisibility(s) === "group").map(s => ({ id:`group-${s.id}`, type:"Group Appointment", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"groupAppointment" })),
+    ...meetings.map(m => ({ id:`meeting-${m.id}`, type:"Meeting", title:m.title, start:m.meeting_date, end:m.meeting_date, meta:`${m.meeting_type || ""} ${m.participants ? "· " + m.participants : ""}`, tone:"meeting" })),
   ].filter(i=>i.start);
   return <section className="grid two">
     <Card title="Add Appointment"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/></Card>
     <section className="card"><CalendarGrid items={items} title="My Calendar"/></section>
-  </section>
-}
-
-function AreaDashboard({area,tasks,blockers,orders,activeSprint}) {
-  const sprintTasks = activeSprint ? tasks.filter(t => t.sprint_id === activeSprint.id) : [];
-  const openTasks = tasks.filter(t => !isDoneStatus(t.status));
-  const reviewTasks = tasks.filter(t => t.status === "Review");
-  const overdue = tasks.filter(isOverdueTask);
-
-  return <section className="grid two">
-    <Card title={`${area} Overview`}>
-      <ul className="checkList">
-        <li>Tasks in area: {tasks.length}</li>
-        <li>Open: {openTasks.length}</li>
-        <li>In current sprint: {sprintTasks.length}</li>
-        <li>In Review: {reviewTasks.length}</li>
-        <li>Overdue: {overdue.length}</li>
-      </ul>
-    </Card>
-    <div className="stack">
-      <h2>Tasks in this area</h2>
-      <div className="taskList">
-        {tasks.length === 0 && <p className="empty">No tasks in this area yet.</p>}
-        {tasks.map(t => <div className="itemCard" key={t.id}>
-          <div className="row"><strong>{t.priority} · {t.title}</strong><span className="badge">{t.status}</span></div>
-          <p className="muted">{t.work_type} · Deadline {t.deadline || "open"}</p>
-        </div>)}
-      </div>
-    </div>
   </section>
 }
 
@@ -1358,21 +1351,14 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
   </div>
 }
 
-function Gantt({tasks,sprints}) {
-  const start = "2026-05-01";
-  const end = "2026-07-31";
-  const days = daysBetweenDates(start, end);
-  const weeks = buildGanttWeeks(days);
+function Gantt({tasks}) {
+  const weeks = buildGanttWeeks();
   const months = buildGanttMonths(weeks);
-  const sprintNameOf = (sprintId) => {
-    if (!sprintId) return "Backlog / No Sprint";
-    return sprints.find(s => s.id === sprintId)?.name || `Sprint ${String(sprintId).slice(0, 8)}`;
-  };
 
   const datedTasks = [...tasks]
     .filter(t => t.planned_start || t.planned_end || t.deadline)
     .sort((a,b) => {
-      const sprintCompare = String(sprintNameOf(a.sprint_id)).localeCompare(String(sprintNameOf(b.sprint_id)));
+      const sprintCompare = String(a.sprint_id || "zz-backlog").localeCompare(String(b.sprint_id || "zz-backlog"));
       if (sprintCompare !== 0) return sprintCompare;
       return String(a.planned_start || a.deadline || "").localeCompare(String(b.planned_start || b.deadline || ""));
     });
@@ -1380,7 +1366,7 @@ function Gantt({tasks,sprints}) {
   const rows = [];
   let lastSprint = null;
   datedTasks.forEach(task => {
-    const group = sprintNameOf(task.sprint_id);
+    const group = task.sprint_id ? `Sprint ${String(task.sprint_id).slice(0, 8)}` : "Backlog / No Sprint";
     if (group !== lastSprint) {
       rows.push({type:"group", id:`group-${group}`, title:group});
       lastSprint = group;
@@ -1390,31 +1376,21 @@ function Gantt({tasks,sprints}) {
 
   return <section className="card">
     <h2>Gantt View</h2>
-
     {datedTasks.length === 0 && <p className="empty">No tasks with start/end date or deadline yet.</p>}
 
     {datedTasks.length > 0 && <div className="ganttPlannerScroll">
       <div className="ganttPlanner" style={{gridTemplateColumns:`280px repeat(${weeks.length}, 92px)`}}>
         <div className="ganttPlannerTaskHead">Task Name</div>
-
-        {months.map(month => <div
-          key={month.label}
-          className="ganttPlannerMonth"
-          style={{gridColumn:`${month.start + 2} / ${month.end + 3}`}}
-        >
-          {month.label}
-        </div>)}
-
-        <div className="ganttPlannerSubHead"></div>
-        {weeks.map(w => <div key={w.key} className="ganttPlannerWeek">{w.week}W</div>)}
+        {months.map(month => <div key={month.label} className="ganttPlannerMonth" style={{gridColumn:`${month.start + 2} / ${month.end + 3}`, gridRow: 1}}>{month.label}</div>)}
+        <div className="ganttPlannerSubHead" style={{gridColumn: 1, gridRow: 2}}></div>
+        {weeks.map((w,index) => <div key={w.key} className="ganttPlannerWeek" style={{gridColumn: index + 2, gridRow: 2}}>{w.week}W</div>)}
 
         {rows.map((rowItem, rowIndex) => {
           const row = rowIndex + 3;
-
           if (rowItem.type === "group") {
             return <React.Fragment key={rowItem.id}>
-              <div className="ganttSprintGroup" style={{gridRow: row}}>{rowItem.title}</div>
-              {weeks.map(w => <div key={`${rowItem.id}-${w.key}`} className="ganttSprintGroupCell" style={{gridRow: row}}></div>)}
+              <div className="ganttSprintGroup" style={{gridColumn: 1, gridRow: row}}>{rowItem.title}</div>
+              {weeks.map((w,index) => <div key={`${rowItem.id}-${w.key}`} className="ganttSprintGroupCell" style={{gridColumn: index + 2, gridRow: row}}></div>)}
             </React.Fragment>
           }
 
@@ -1425,20 +1401,9 @@ function Gantt({tasks,sprints}) {
           const endWeek = Math.max(startWeek + 1, weekIndexForDate(taskEnd, weeks) + 1);
 
           return <React.Fragment key={task.id}>
-            <div className={rowIndex % 2 === 0 ? "ganttPlannerTask even" : "ganttPlannerTask odd"} style={{gridRow: row}}>
-              <strong>{task.title}</strong>
-            </div>
-
-            {weeks.map(w => <div
-              key={`${task.id}-${w.key}`}
-              className={rowIndex % 2 === 0 ? "ganttPlannerCell even" : "ganttPlannerCell odd"}
-              style={{gridRow: row}}
-            ></div>)}
-
-            <div
-              className={`ganttPlannerBar ${sprintTone(task.sprint_id)}`}
-              style={{gridColumn:`${startWeek + 2} / ${endWeek + 2}`, gridRow: row}}
-              title={`${task.title}: ${taskStart} → ${taskEnd}`}></div>
+            <div className="ganttPlannerTask" style={{gridColumn: 1, gridRow: row}}><strong>{task.title}</strong></div>
+            {weeks.map((w,index) => <div key={`${task.id}-${w.key}`} className="ganttPlannerCell" style={{gridColumn: index + 2, gridRow: row}}></div>)}
+            <div className={`ganttPlannerBar ${sprintTone(task.sprint_id)}`} style={{gridColumn:`${startWeek + 2} / ${endWeek + 2}`, gridRow: row}} title={`${task.title}: ${taskStart} → ${taskEnd}`}></div>
           </React.Fragment>
         })}
       </div>
@@ -1446,30 +1411,26 @@ function Gantt({tasks,sprints}) {
   </section>
 }
 
-function buildGanttWeeks(days) {
-  if (!days.length) return [];
-  const monthStarts = [
+function buildGanttWeeks() {
+  const months = [
     {month: 4, label: "May 2026"},
     {month: 5, label: "Jun 2026"},
     {month: 6, label: "Jul 2026"},
   ];
   const weeks = [];
-  monthStarts.forEach((monthInfo) => {
+  months.forEach(monthInfo => {
     const year = 2026;
     const daysInMonth = new Date(year, monthInfo.month + 1, 0).getDate();
     for (let week = 1; week <= 5; week++) {
       const startDay = (week - 1) * 7 + 1;
       if (startDay > daysInMonth) continue;
       const endDay = Math.min(startDay + 6, daysInMonth);
-      const start = new Date(year, monthInfo.month, startDay).toISOString().slice(0,10);
-      const end = new Date(year, monthInfo.month, endDay).toISOString().slice(0,10);
       weeks.push({
         key: `${year}-${monthInfo.month + 1}-${week}`,
-        cw: week,
         week,
         monthLabel: monthInfo.label,
-        start,
-        end
+        start: new Date(year, monthInfo.month, startDay).toISOString().slice(0,10),
+        end: new Date(year, monthInfo.month, endDay).toISOString().slice(0,10)
       });
     }
   });

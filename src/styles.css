@@ -1242,3 +1242,136 @@
   25% { opacity: 1; scale: 1.25; }
   100% { opacity: 0; scale: 1.9; }
 }
+
+
+/* HARD FINAL OVERRIDES: aligned Gantt and collapsible calendar */
+.ganttPlannerScroll {
+  width: 100% !important;
+  overflow-x: auto !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 18px !important;
+  background: #fff !important;
+}
+
+.ganttPlanner {
+  display: grid !important;
+  grid-auto-flow: row !important;
+  min-width: max-content !important;
+  position: relative !important;
+  background: #fff !important;
+}
+
+.ganttPlannerTaskHead {
+  grid-column: 1 !important;
+  grid-row: 1 / span 2 !important;
+}
+
+.ganttPlannerSubHead {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+}
+
+.ganttPlannerMonth {
+  grid-row: 1 !important;
+}
+
+.ganttPlannerWeek {
+  grid-row: 2 !important;
+}
+
+.ganttPlannerTaskHead,
+.ganttPlannerSubHead,
+.ganttPlannerMonth,
+.ganttPlannerWeek {
+  min-height: 44px !important;
+  display: grid !important;
+  place-items: center !important;
+  background: #fff !important;
+  color: #111827 !important;
+  border: 1px solid #d1d5db !important;
+  font-weight: 900 !important;
+}
+
+.ganttPlannerTask {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 7 !important;
+  min-height: 58px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 8px 12px !important;
+  background: #fff !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+.ganttPlannerCell,
+.ganttSprintGroupCell {
+  min-height: 58px !important;
+  background: #fff !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+.ganttSprintGroup {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 8 !important;
+  min-height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 8px 12px !important;
+  background: #f9fafb !important;
+  border: 1px solid #e5e7eb !important;
+  font-weight: 900 !important;
+}
+
+.ganttSprintGroupCell {
+  min-height: 36px !important;
+}
+
+.ganttPlannerBar {
+  z-index: 9 !important;
+  align-self: center !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  margin: 0 7px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  font-size: 0 !important;
+  color: transparent !important;
+  box-shadow: 0 2px 6px rgba(15,23,42,.14) !important;
+}
+
+.ganttPlannerBar.sprint-tone-0 { background: #94a3b8 !important; }
+.ganttPlannerBar.sprint-tone-1 { background: #22c55e !important; }
+.ganttPlannerBar.sprint-tone-2 { background: #f59e0b !important; }
+.ganttPlannerBar.sprint-tone-3 { background: #3b82f6 !important; }
+.ganttPlannerBar.sprint-tone-4 { background: #a855f7 !important; }
+.ganttPlannerBar.sprint-tone-5 { background: #ef4444 !important; }
+.ganttPlannerBar.sprint-tone-6 { background: #14b8a6 !important; }
+.ganttPlannerBar.sprint-tone-7 { background: #ec4899 !important; }
+.ganttPlannerBar.sprint-tone-8 { background: #6366f1 !important; }
+
+.calendarPill {
+  cursor: pointer !important;
+}
+
+.calendarPill strong {
+  display: block !important;
+}
+
+.calendarPill small {
+  display: block !important;
+  margin-top: 3px !important;
+}
+
+.calendarPill.sprint {
+  background: #ecfdf5 !important;
+  border-color: #22c55e !important;
+}
+
+.calendarPill.meeting,
+.calendarPill.privateAppointment,
+.calendarPill.groupAppointment {
+  background: #ffedd5 !important;
+  border-color: #fb923c !important;
+}
