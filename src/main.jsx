@@ -1354,22 +1354,33 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
 function Gantt({tasks,sprints=[]}) {
   const weeks = buildGanttWeeks();
   const months = buildGanttMonths(weeks);
+  const timelineStart = weeks[0]?.start || "2026-05-01";
+  const timelineEnd = weeks[weeks.length - 1]?.end || "2026-07-31";
 
-  function sprintNameById(id) {
-    return sprints.find(s => s.id === id)?.name || "Unknown Sprint";
+  function sprintInfo(id) {
+    return sprints.find(s => s.id === id) || null;
   }
 
-  const datedTasks = [...tasks]
-    .filter(t => t.planned_start || t.planned_end || t.deadline)
-    .sort((a,b) => {
-      const sprintCompare = String(a.sprint_id || "zz-backlog").localeCompare(String(b.sprint_id || "zz-backlog"));
-      if (sprintCompare !== 0) return sprintCompare;
-      return String(a.planned_start || a.deadline || "").localeCompare(String(b.planned_start || b.deadline || ""));
-    });
+  function sprintSortKey(id) {
+    const sprint = sprintInfo(id);
+    return sprint?.start_date || sprint?.end_date || "9999-12-31";
+  }
+
+  function sprintNameById(id) {
+    return sprintInfo(id)?.name || "Unknown Sprint";
+  }
+
+  const sortedTasks = [...tasks].sort((a,b) => {
+    const sprintCompare = sprintSortKey(a.sprint_id).localeCompare(sprintSortKey(b.sprint_id));
+    if (sprintCompare !== 0) return sprintCompare;
+    const dateCompare = String(a.planned_start || a.deadline || "9999-12-31").localeCompare(String(b.planned_start || b.deadline || "9999-12-31"));
+    if (dateCompare !== 0) return dateCompare;
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
 
   const rows = [];
   let lastSprint = null;
-  datedTasks.forEach(task => {
+  sortedTasks.forEach(task => {
     const group = task.sprint_id ? sprintNameById(task.sprint_id) : "Backlog / No Sprint";
     if (group !== lastSprint) {
       rows.push({type:"group", id:`group-${group}`, title:group});
@@ -1380,9 +1391,10 @@ function Gantt({tasks,sprints=[]}) {
 
   return <section className="card">
     <h2>Gantt View</h2>
-    {datedTasks.length === 0 && <p className="empty">No tasks with start/end date or deadline yet.</p>}
 
-    {datedTasks.length > 0 && <div className="ganttPlannerScroll">
+    {sortedTasks.length === 0 && <p className="empty">No tasks yet.</p>}
+
+    {sortedTasks.length > 0 && <div className="ganttPlannerScroll">
       <div className="ganttPlanner" style={{gridTemplateColumns:`280px repeat(${weeks.length}, 92px)`}}>
         <div className="ganttPlannerTaskHead">Taskname</div>
 
@@ -1408,14 +1420,19 @@ function Gantt({tasks,sprints=[]}) {
           }
 
           const task = rowItem;
-          const taskStart = task.planned_start || task.deadline;
-          const taskEnd = task.planned_end || task.deadline || taskStart;
-          const startWeek = weekIndexForDate(taskStart, weeks);
-          const endWeek = Math.max(startWeek + 1, weekIndexForDate(taskEnd, weeks) + 1);
+          const rawStart = task.planned_start || task.deadline;
+          const rawEnd = task.planned_end || task.deadline || rawStart;
+          const hasDate = Boolean(rawStart);
+          const barStart = rawStart && rawStart < timelineStart ? timelineStart : rawStart;
+          const barEnd = rawEnd && rawEnd > timelineEnd ? timelineEnd : rawEnd;
+          const isVisibleInRange = hasDate && rawEnd >= timelineStart && rawStart <= timelineEnd;
+          const startWeek = isVisibleInRange ? weekIndexForDate(barStart, weeks) : 0;
+          const endWeek = isVisibleInRange ? Math.max(startWeek + 1, weekIndexForDate(barEnd, weeks) + 1) : 1;
 
           return <React.Fragment key={task.id}>
             <div className="ganttPlannerTask" style={{gridColumn: 1, gridRow: row}}>
               <strong>{task.title}</strong>
+              {!hasDate && <small>No date</small>}
             </div>
 
             {weeks.map((w,index) => <div
@@ -1424,11 +1441,11 @@ function Gantt({tasks,sprints=[]}) {
               style={{gridColumn: index + 2, gridRow: row}}
             ></div>)}
 
-            <div
+            {isVisibleInRange && <div
               className={`ganttPlannerBar ${sprintTone(task.sprint_id)}`}
               style={{gridColumn:`${startWeek + 2} / ${endWeek + 2}`, gridRow: row}}
-              title={`${task.title}: ${taskStart} → ${taskEnd}`}
-            ></div>
+              title={`${task.title}: ${rawStart} → ${rawEnd}`}
+            ></div>}
           </React.Fragment>
         })}
       </div>
