@@ -652,11 +652,7 @@ function downloadOrdersCsv(orders, nameOf) {
   URL.revokeObjectURL(url);
 }
 function sprintTone(sprintId) {
-  if (!sprintId) return "sprint-tone-0";
-  const chars = String(sprintId);
-  let total = 0;
-  for (let i = 0; i < chars.length; i++) total += chars.charCodeAt(i);
-  return `sprint-tone-${(total % 8) + 1}`;
+  return "sprint-tone-3";
 }
 function personTone(profileId, profiles = []) {
   const index = Math.max(0, profiles.findIndex(p => p.id === profileId));
