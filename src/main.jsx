@@ -1355,7 +1355,9 @@ function Gantt({tasks,sprints=[]}) {
   const weeks = buildGanttWeeks();
   const months = buildGanttMonths(weeks);
 
-  const sprintNameById = (id) => sprints.find(s => s.id === id)?.name || "Unknown Sprint";
+  function sprintNameById(id) {
+    return sprints.find(s => s.id === id)?.name || "Unknown Sprint";
+  }
 
   const datedTasks = [...tasks]
     .filter(t => t.planned_start || t.planned_end || t.deadline)
@@ -1383,12 +1385,21 @@ function Gantt({tasks,sprints=[]}) {
     {datedTasks.length > 0 && <div className="ganttPlannerScroll">
       <div className="ganttPlanner" style={{gridTemplateColumns:`280px repeat(${weeks.length}, 92px)`}}>
         <div className="ganttPlannerTaskHead">Taskname</div>
-        {months.map(month => <div key={month.label} className="ganttPlannerMonth" style={{gridColumn:`${month.start + 2} / ${month.end + 3}`, gridRow: 1}}>{month.label}</div>)}
+
+        {months.map(month => <div
+          key={month.label}
+          className="ganttPlannerMonth"
+          style={{gridColumn:`${month.start + 2} / ${month.end + 3}`, gridRow: 1}}
+        >
+          {month.label}
+        </div>)}
+
         <div className="ganttPlannerSubHead" style={{gridColumn: 1, gridRow: 2}}></div>
         {weeks.map((w,index) => <div key={w.key} className="ganttPlannerWeek" style={{gridColumn: index + 2, gridRow: 2}}>{w.week}W</div>)}
 
         {rows.map((rowItem, rowIndex) => {
           const row = rowIndex + 3;
+
           if (rowItem.type === "group") {
             return <React.Fragment key={rowItem.id}>
               <div className="ganttSprintGroup" style={{gridColumn: 1, gridRow: row}}>{rowItem.title}</div>
@@ -1403,9 +1414,21 @@ function Gantt({tasks,sprints=[]}) {
           const endWeek = Math.max(startWeek + 1, weekIndexForDate(taskEnd, weeks) + 1);
 
           return <React.Fragment key={task.id}>
-            <div className="ganttPlannerTask" style={{gridColumn: 1, gridRow: row}}><strong>{task.title}</strong></div>
-            {weeks.map((w,index) => <div key={`${task.id}-${w.key}`} className="ganttPlannerCell" style={{gridColumn: index + 2, gridRow: row}}></div>)}
-            <div className={`ganttPlannerBar ${sprintTone(task.sprint_id)}`} style={{gridColumn:`${startWeek + 2} / ${endWeek + 2}`, gridRow: row}} title={`${task.title}: ${taskStart} → ${taskEnd}`}></div>
+            <div className="ganttPlannerTask" style={{gridColumn: 1, gridRow: row}}>
+              <strong>{task.title}</strong>
+            </div>
+
+            {weeks.map((w,index) => <div
+              key={`${task.id}-${w.key}`}
+              className="ganttPlannerCell"
+              style={{gridColumn: index + 2, gridRow: row}}
+            ></div>)}
+
+            <div
+              className={`ganttPlannerBar ${sprintTone(task.sprint_id)}`}
+              style={{gridColumn:`${startWeek + 2} / ${endWeek + 2}`, gridRow: row}}
+              title={`${task.title}: ${taskStart} → ${taskEnd}`}
+            ></div>
           </React.Fragment>
         })}
       </div>
@@ -1438,6 +1461,7 @@ function buildGanttWeeks() {
   });
   return weeks;
 }
+
 function buildGanttMonths(weeks) {
   const months = [];
   weeks.forEach((w, index) => {
@@ -1447,6 +1471,7 @@ function buildGanttMonths(weeks) {
   });
   return months;
 }
+
 function weekIndexForDate(date, weeks) {
   if (!date || !weeks.length) return 0;
   const idx = weeks.findIndex(w => date >= w.start && date <= w.end);
