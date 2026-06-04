@@ -83,6 +83,7 @@ function App() {
   const [meetings, setMeetings] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [milestones, setMilestones] = useState([]);
+  const [infoItems, setInfoItems] = useState([]);
   const [genericFiles, setGenericFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(() => localStorage.getItem("admm-active-tab") || "dashboard");
@@ -95,6 +96,7 @@ function App() {
   const [scheduleForm, setScheduleForm] = useState(emptySchedule());
   const [meetingForm, setMeetingForm] = useState(emptyMeeting());
   const [milestoneForm, setMilestoneForm] = useState(emptyMilestone());
+  const [infoForm, setInfoForm] = useState(emptyInfoItem());
   const [selectedSprintId, setSelectedSprintId] = useState("");
   const [message, setMessage] = useState("");
 
@@ -126,7 +128,7 @@ function App() {
 
   async function loadAll() {
     if (!session?.user) return;
-    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes, genericFilesRes, milestonesRes] = await Promise.all([
+    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes, genericFilesRes, milestonesRes, infoItemsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
       supabase.from("profiles").select("*").order("created_at", { ascending: true }),
       supabase.from("tasks").select("*").order("priority", { ascending: true }).order("created_at", { ascending: false }),
@@ -141,7 +143,8 @@ function App() {
       supabase.from("meetings").select("*").order("meeting_date", { ascending: false }),
       supabase.from("notifications").select("*").order("created_at", { ascending: false }),
       supabase.from("generic_files").select("*").order("created_at", { ascending: false }),
-      supabase.from("milestones").select("*").order("target_date", { ascending: true }),
+      supabase.from("milestones").select("*").order("order_index", { ascending: true }),
+      supabase.from("info_items").select("*").order("created_at", { ascending: false }),
     ]);
     if (!profileRes.data) {
       const fallbackName = session.user.email?.split("@")[0] || "Teammitglied";
@@ -161,7 +164,7 @@ function App() {
     setProfiles(profilesRes.data || []); setTasks(tasksRes.data || []); setSprints(sprintsRes.data || []);
     setAssignees(assigneesRes.data || []); setDependencies(depsRes.data || []); setComments(commentsRes.data || []);
     setFiles(filesRes.data || []); setOrders(ordersRes.data || []); setBlockers(blockersRes.data || []);
-    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []); setMilestones(milestonesRes.data || []);
+    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []); setMilestones(milestonesRes.data || []); setInfoItems(infoItemsRes.data || []);
     if (!selectedSprintId) {
       const active = (sprintsRes.data || []).find(s => s.status === "Active") || (sprintsRes.data || [])[0];
       if (active) setSelectedSprintId(active.id);
@@ -435,12 +438,24 @@ function App() {
   async function addMilestone(e) {
     e.preventDefault();
     if (!milestoneForm.title.trim()) return;
+    const desiredOrder = Math.max(1, Number(milestoneForm.order_index || 1));
+
+    const toShift = milestones
+      .filter(m => Number(m.order_index || 1) >= desiredOrder)
+      .sort((a,b) => Number(b.order_index || 1) - Number(a.order_index || 1));
+
+    for (const item of toShift) {
+      await supabase.from("milestones").update({
+        order_index: Number(item.order_index || 1) + 1
+      }).eq("id", item.id);
+    }
+
     const { error } = await supabase.from("milestones").insert({
       title: milestoneForm.title,
       target_date: milestoneForm.target_date || null,
       description: milestoneForm.description || "",
       status: milestoneForm.status || "Planned",
-      order_index: Number(milestoneForm.order_index || 1),
+      order_index: desiredOrder,
       created_by: profile?.id
     });
     if (error) alert(error.message);
@@ -453,6 +468,27 @@ function App() {
   async function deleteMilestone(id) {
     if (!confirm("Delete this milestone?")) return;
     const { error } = await supabase.from("milestones").delete().eq("id", id);
+    if (error) alert(error.message);
+  }
+  async function addInfoItem(e) {
+    e.preventDefault();
+    if (!infoForm.title.trim()) return;
+    const { error } = await supabase.from("info_items").insert({
+      title: infoForm.title,
+      description: infoForm.description || "",
+      link_url: infoForm.link_url || "",
+      created_by: profile?.id
+    });
+    if (error) alert(error.message);
+    else setInfoForm(emptyInfoItem());
+  }
+  async function patchInfoItem(id, patch) {
+    const { error } = await supabase.from("info_items").update(patch).eq("id", id);
+    if (error) alert(error.message);
+  }
+  async function deleteInfoItem(id) {
+    if (!confirm("Delete this info item?")) return;
+    const { error } = await supabase.from("info_items").delete().eq("id", id);
     if (error) alert(error.message);
   }
   async function notifyMany(profileIds, title, body) {
@@ -511,7 +547,7 @@ function App() {
       </section>
 
       <nav className="tabs">
-        {["dashboard","backlog","sprint","history","me","calendar","orders","blockers","meetings","gantt","milestones"].map(id => (
+        {["dashboard","backlog","sprint","history","me","calendar","orders","blockers","meetings","gantt","milestones","info"].map(id => (
           <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
             {id === "area" ? `${displayArea(profile?.area)}-Übersicht` : labelForTab(id)}
           </button>
@@ -531,12 +567,13 @@ function App() {
       {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "gantt" && <Gantt tasks={tasks} sprints={sprints} />}
       {tab === "milestones" && <Milestones sprints={sprints} milestones={milestones} form={milestoneForm} setForm={setMilestoneForm} addMilestone={addMilestone} patchMilestone={patchMilestone} deleteMilestone={deleteMilestone} />}
+      {tab === "info" && <InfoBoard items={infoItems} form={infoForm} setForm={setInfoForm} addInfoItem={addInfoItem} patchInfoItem={patchInfoItem} deleteInfoItem={deleteInfoItem} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
     </main>
   );
 }
 
 function labelForTab(id) {
-  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Current Sprint", history:"Sprint History", me:"My Area", orders:"Orders", blockers:"Questions & Blockers", calendar:"Team Calendar", meetings:"Sprints & Meetings", gantt:"Gantt", milestones:"Milestones"})[id];
+  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Current Sprint", history:"Sprint History", me:"My Area", orders:"Orders", blockers:"Questions & Blockers", calendar:"Team Calendar", meetings:"Sprints & Meetings", gantt:"Gantt", milestones:"Milestones", info:"Info Board"})[id];
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function taskEndDate(task) {
@@ -596,6 +633,13 @@ function downloadOrdersCsv(orders, nameOf) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+function sprintTone(sprintId) {
+  if (!sprintId) return "sprint-tone-0";
+  const chars = String(sprintId);
+  let total = 0;
+  for (let i = 0; i < chars.length; i++) total += chars.charCodeAt(i);
+  return `sprint-tone-${(total % 8) + 1}`;
+}
 function personTone(profileId, profiles = []) {
   const index = Math.max(0, profiles.findIndex(p => p.id === profileId));
   return `person-${(index % 10) + 1}`;
@@ -654,6 +698,7 @@ function emptyBlocker(){return{question:"",tried:"",needed_from:""}}
 function emptySchedule(){return{title:"",task_id:"",start_date:new Date().toISOString().slice(0,10),end_date:"",notes:"",visibility:"private"}}
 function emptyMeeting(){return{sprint_id:"",meeting_type:"Weekly",title:"",meeting_date:new Date().toISOString().slice(0,10),participants:"",decisions:"",open_points:"",next_steps:""}}
 function emptyMilestone(){return{title:"",target_date:new Date().toISOString().slice(0,10),description:"",status:"Planned",order_index:1}}
+function emptyInfoItem(){return{title:"",description:"",link_url:""}}
 function Stat({icon,label,value,danger}){return <div className={danger?"stat dangerStat":"stat"}><div className="statIcon">{icon}</div><div><strong>{value}</strong><span>{label}</span></div></div>}
 function Card({title,children}){return <section className="card"><h2>{title}</h2>{children}</section>}
 
@@ -1327,7 +1372,6 @@ function Gantt({tasks,sprints}) {
 
   return <section className="card">
     <h2>Gantt View</h2>
-    <p className="muted">Tasks are sorted by sprint. The left column shows task titles. Months are shown on top, calendar weeks below, and each bar shows the task duration from May to July.</p>
 
     {datedTasks.length === 0 && <p className="empty">No tasks with start/end date or deadline yet.</p>}
 
@@ -1374,12 +1418,9 @@ function Gantt({tasks,sprints}) {
             ></div>)}
 
             <div
-              className={`ganttPlannerBar ${String(task.discipline || task.area || "Task").replaceAll(" ","-")}`}
+              className={`ganttPlannerBar ${sprintTone(task.sprint_id)}`}
               style={{gridColumn:`${startWeek + 2} / ${endWeek + 2}`, gridRow: row}}
-              title={`${task.title}: ${taskStart} → ${taskEnd}`}
-            >
-              {taskStart} → {taskEnd}
-            </div>
+              title={`${task.title}: ${taskStart} → ${taskEnd}`}></div>
           </React.Fragment>
         })}
       </div>
@@ -1424,7 +1465,7 @@ function Milestones({sprints,milestones,form,setForm,addMilestone,patchMilestone
 
   return <section className="card">
     <h2>Milestones</h2>
-    <p className="muted">Only manually created milestones are shown here. Add as many as you need and control the order with the Order field.</p>
+    <p className="muted">Add as many milestones as you need. If you add a milestone with an existing order number, existing milestones move one step back.</p>
 
     <div className="manualMilestoneTimeline">
       {sorted.length === 0 && <p className="empty">No milestones yet.</p>}
@@ -1484,6 +1525,64 @@ function EditableMilestone({milestone,index,patchMilestone,deleteMilestone}) {
     </div>}
     <div className="manualMilestoneStem"></div>
     <div className="manualMilestoneDot"></div>
+  </div>
+}
+
+function InfoBoard({items,form,setForm,addInfoItem,patchInfoItem,deleteInfoItem,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
+  return <section className="grid two">
+    <Card title="Add Info">
+      <form className="form" onSubmit={addInfoItem}>
+        <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Title"/>
+        <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Description"/>
+        <input value={form.link_url} onChange={e=>setForm({...form,link_url:e.target.value})} placeholder="Link"/>
+        <button className="primary">Add Info</button>
+      </form>
+    </Card>
+    <div className="taskList">
+      {items.length === 0 && <p className="empty">No info items yet.</p>}
+      {items.map(item => <EditableInfoItem
+        key={item.id}
+        item={item}
+        patchInfoItem={patchInfoItem}
+        deleteInfoItem={deleteInfoItem}
+        nameOf={nameOf}
+        files={filesOfRecord("info", item.id)}
+        uploadGenericFile={uploadGenericFile}
+        deleteGenericFile={deleteGenericFile}
+      />)}
+    </div>
+  </section>
+}
+
+function EditableInfoItem({item,patchInfoItem,deleteInfoItem,nameOf,files,uploadGenericFile,deleteGenericFile}) {
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState({...item});
+  async function save() {
+    await patchInfoItem(item.id,{
+      title:draft.title || "",
+      description:draft.description || "",
+      link_url:draft.link_url || ""
+    });
+    setEditing(false);
+  }
+  return <div className="itemCard">
+    {!editing ? <>
+      <div className="row"><strong>{item.title}</strong><button className="iconBtn" onClick={()=>deleteInfoItem(item.id)}><Trash2 size={16}/></button></div>
+      <p>{item.description}</p>
+      {item.link_url && <a href={item.link_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> Open link</a>}
+      <p className="muted">By {nameOf(item.created_by)}</p>
+    </> : <div className="form">
+      <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
+      <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})}/>
+      <input value={draft.link_url || ""} onChange={e=>setDraft({...draft,link_url:e.target.value})}/>
+    </div>}
+    <FileBox title="Files" files={files} onUpload={file=>uploadGenericFile("info", item.id, file)} onDelete={deleteGenericFile}/>
+    <div className="buttonRow">
+      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <>
+        <button className="primary" onClick={save}>Save</button>
+        <button className="secondary" onClick={()=>setEditing(false)}>Cancel</button>
+      </>}
+    </div>
   </div>
 }
 
