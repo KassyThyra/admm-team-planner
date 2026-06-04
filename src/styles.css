@@ -1063,3 +1063,182 @@
   border-color: #fb923c !important;
 }
 .levelCard h2 { font-size: 30px; }
+
+
+/* Final Gantt requested cleanup */
+.ganttPlannerCell,
+.ganttPlannerCell.even,
+.ganttPlannerCell.odd {
+  background: #ffffff !important;
+}
+
+.ganttPlannerTask,
+.ganttPlannerTask.even,
+.ganttPlannerTask.odd {
+  background: #ffffff !important;
+}
+
+.ganttSprintGroupCell {
+  background: #ffffff !important;
+}
+
+.ganttPlannerBar {
+  border-radius: 999px !important;
+  min-height: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  color: transparent !important;
+}
+
+.ganttPlannerBar.sprint-tone-0 { background: #94a3b8 !important; }
+.ganttPlannerBar.sprint-tone-1 { background: #22c55e !important; }
+.ganttPlannerBar.sprint-tone-2 { background: #f59e0b !important; }
+.ganttPlannerBar.sprint-tone-3 { background: #3b82f6 !important; }
+.ganttPlannerBar.sprint-tone-4 { background: #a855f7 !important; }
+.ganttPlannerBar.sprint-tone-5 { background: #ef4444 !important; }
+.ganttPlannerBar.sprint-tone-6 { background: #14b8a6 !important; }
+.ganttPlannerBar.sprint-tone-7 { background: #ec4899 !important; }
+.ganttPlannerBar.sprint-tone-8 { background: #6366f1 !important; }
+
+/* Milestones: horizontal line through the center of the cards */
+.manualMilestoneTimeline {
+  align-items: center !important;
+  padding: 46px 26px !important;
+  min-height: 260px !important;
+}
+
+.manualMilestoneTimeline::after {
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  z-index: 1 !important;
+}
+
+.manualMilestoneNode {
+  align-items: center !important;
+}
+
+.manualMilestoneCard {
+  z-index: 3 !important;
+  background: #fef3c7 !important;
+}
+
+.manualMilestoneStem {
+  top: 50% !important;
+  bottom: auto !important;
+  height: 46px !important;
+  transform: translateY(-50%) !important;
+  z-index: 2 !important;
+}
+
+.manualMilestoneDot {
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  z-index: 4 !important;
+}
+
+/* Info board */
+.infoLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+/* Gantt final correction: table must not be colored, only bars are colored */
+.ganttPlanner,
+.ganttPlannerScroll {
+  background: #ffffff !important;
+}
+
+.ganttPlannerTaskHead,
+.ganttPlannerSubHead,
+.ganttPlannerMonth,
+.ganttPlannerWeek {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid #d1d5db !important;
+}
+
+.ganttPlannerTask,
+.ganttPlannerTask.even,
+.ganttPlannerTask.odd,
+.ganttPlannerCell,
+.ganttPlannerCell.even,
+.ganttPlannerCell.odd,
+.ganttSprintGroup,
+.ganttSprintGroupCell {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+.ganttSprintGroup {
+  font-weight: 900;
+  background: #f9fafb !important;
+}
+
+.ganttPlannerBar {
+  border-radius: 999px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  padding: 0 !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+/* Milestone active worker and finish flag */
+.manualMilestoneNode {
+  position: relative;
+}
+
+.workerIcon {
+  position: absolute;
+  top: calc(50% - 70px);
+  right: 14px;
+  font-size: 26px;
+  z-index: 6;
+  animation: workerBob 1s infinite ease-in-out;
+}
+
+.finishFlag {
+  position: absolute;
+  top: calc(50% - 76px);
+  right: -18px;
+  font-size: 30px;
+  z-index: 6;
+}
+
+@keyframes workerBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* Done fireworks */
+.doneFireworks {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+}
+
+.doneFireworks span {
+  position: absolute;
+  font-size: 54px;
+  animation: fireworkPop 1.4s ease-out forwards;
+}
+
+.doneFireworks span:nth-child(1) { transform: translate(-110px, -40px); animation-delay: 0s; }
+.doneFireworks span:nth-child(2) { transform: translate(80px, -80px); animation-delay: .1s; }
+.doneFireworks span:nth-child(3) { transform: translate(0, 20px); animation-delay: .18s; }
+.doneFireworks span:nth-child(4) { transform: translate(-70px, 90px); animation-delay: .28s; }
+.doneFireworks span:nth-child(5) { transform: translate(120px, 70px); animation-delay: .36s; }
+
+@keyframes fireworkPop {
+  0% { opacity: 0; scale: .2; }
+  25% { opacity: 1; scale: 1.25; }
+  100% { opacity: 0; scale: 1.9; }
+}

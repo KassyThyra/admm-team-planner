@@ -99,6 +99,7 @@ function App() {
   const [infoForm, setInfoForm] = useState(emptyInfoItem());
   const [selectedSprintId, setSelectedSprintId] = useState("");
   const [message, setMessage] = useState("");
+  const [celebration, setCelebration] = useState(false);
 
   const isConfigured = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.includes("DEIN-PROJEKT"));
 
@@ -294,7 +295,13 @@ function App() {
   async function moveTask(task, newStatus) {
     const check = canMoveTask(task, newStatus, profile, assigneesOf(task.id), depsOf(task.id));
     if (!check.ok) { alert(check.message); return; }
+    const wasDone = isDoneStatus(task.status);
     await patchTask(task.id, { status: newStatus, backlog_status: newStatus === "Done" ? "Done" : "In Sprint" });
+    if (newStatus === "Done" && !wasDone) {
+      setCelebration(true);
+      setTimeout(() => setCelebration(false), 1800);
+    }
+    await loadAll();
   }
   async function addTaskToSprint(taskId, sprintId) {
     if (!sprintId) {
@@ -459,16 +466,21 @@ function App() {
       created_by: profile?.id
     });
     if (error) alert(error.message);
-    else setMilestoneForm(emptyMilestone());
+    else {
+      setMilestoneForm(emptyMilestone());
+      await loadAll();
+    }
   }
   async function patchMilestone(id, patch) {
     const { error } = await supabase.from("milestones").update(patch).eq("id", id);
     if (error) alert(error.message);
+    else await loadAll();
   }
   async function deleteMilestone(id) {
     if (!confirm("Delete this milestone?")) return;
     const { error } = await supabase.from("milestones").delete().eq("id", id);
     if (error) alert(error.message);
+    else await loadAll();
   }
   async function addInfoItem(e) {
     e.preventDefault();
@@ -480,16 +492,21 @@ function App() {
       created_by: profile?.id
     });
     if (error) alert(error.message);
-    else setInfoForm(emptyInfoItem());
+    else {
+      setInfoForm(emptyInfoItem());
+      await loadAll();
+    }
   }
   async function patchInfoItem(id, patch) {
     const { error } = await supabase.from("info_items").update(patch).eq("id", id);
     if (error) alert(error.message);
+    else await loadAll();
   }
   async function deleteInfoItem(id) {
     if (!confirm("Delete this info item?")) return;
     const { error } = await supabase.from("info_items").delete().eq("id", id);
     if (error) alert(error.message);
+    else await loadAll();
   }
   async function notifyMany(profileIds, title, body) {
     const rows = profileIds.filter(Boolean).map(profile_id => ({ profile_id, title, body }));
@@ -568,6 +585,7 @@ function App() {
       {tab === "gantt" && <Gantt tasks={tasks} sprints={sprints} />}
       {tab === "milestones" && <Milestones sprints={sprints} milestones={milestones} form={milestoneForm} setForm={setMilestoneForm} addMilestone={addMilestone} patchMilestone={patchMilestone} deleteMilestone={deleteMilestone} />}
       {tab === "info" && <InfoBoard items={infoItems} form={infoForm} setForm={setInfoForm} addInfoItem={addInfoItem} patchInfoItem={patchInfoItem} deleteInfoItem={deleteInfoItem} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
+      {celebration && <DoneFireworks />}
     </main>
   );
 }
@@ -1388,7 +1406,7 @@ function Gantt({tasks,sprints}) {
         </div>)}
 
         <div className="ganttPlannerSubHead"></div>
-        {weeks.map(w => <div key={w.key} className="ganttPlannerWeek">CW {w.cw}</div>)}
+        {weeks.map(w => <div key={w.key} className="ganttPlannerWeek">{w.week}W</div>)}
 
         {rows.map((rowItem, rowIndex) => {
           const row = rowIndex + 3;
@@ -1430,16 +1448,30 @@ function Gantt({tasks,sprints}) {
 
 function buildGanttWeeks(days) {
   if (!days.length) return [];
+  const monthStarts = [
+    {month: 4, label: "May 2026"},
+    {month: 5, label: "Jun 2026"},
+    {month: 6, label: "Jul 2026"},
+  ];
   const weeks = [];
-  days.forEach(day => {
-    const d = new Date(day);
-    const first = new Date(d.getFullYear(), 0, 1);
-    const cw = Math.ceil((((d - first) / 86400000) + first.getDay() + 1) / 7);
-    const key = `${d.getFullYear()}-${cw}`;
-    const monthLabel = d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-    const existing = weeks.find(w => w.key === key);
-    if (existing) existing.end = day;
-    else weeks.push({key, cw, monthLabel, start: day, end: day});
+  monthStarts.forEach((monthInfo) => {
+    const year = 2026;
+    const daysInMonth = new Date(year, monthInfo.month + 1, 0).getDate();
+    for (let week = 1; week <= 5; week++) {
+      const startDay = (week - 1) * 7 + 1;
+      if (startDay > daysInMonth) continue;
+      const endDay = Math.min(startDay + 6, daysInMonth);
+      const start = new Date(year, monthInfo.month, startDay).toISOString().slice(0,10);
+      const end = new Date(year, monthInfo.month, endDay).toISOString().slice(0,10);
+      weeks.push({
+        key: `${year}-${monthInfo.month + 1}-${week}`,
+        cw: week,
+        week,
+        monthLabel: monthInfo.label,
+        start,
+        end
+      });
+    }
   });
   return weeks;
 }
@@ -1469,14 +1501,14 @@ function Milestones({sprints,milestones,form,setForm,addMilestone,patchMilestone
 
     <div className="manualMilestoneTimeline">
       {sorted.length === 0 && <p className="empty">No milestones yet.</p>}
-      {sorted.map((m,index)=><EditableMilestone key={m.id} milestone={m} index={index + 1} patchMilestone={patchMilestone} deleteMilestone={deleteMilestone}/>)}
+      {sorted.map((m,index)=><EditableMilestone key={m.id} milestone={m} index={index + 1} isLast={index === sorted.length - 1} patchMilestone={patchMilestone} deleteMilestone={deleteMilestone}/>) }
     </div>
 
     <Card title="Add Milestone">
       <form className="form" onSubmit={addMilestone}>
         <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Milestone title"/>
         <input type="date" value={form.target_date || ""} onChange={e=>setForm({...form,target_date:e.target.value})}/>
-        <input type="number" min="1" value={form.order_index || 1} onChange={e=>setForm({...form,order_index:Number(e.target.value)})} placeholder="Order"/>
+        <select value={form.order_index || 1} onChange={e=>setForm({...form,order_index:Number(e.target.value)})}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select>
         <textarea value={form.description || ""} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Description"/>
         <select value={form.status || "Planned"} onChange={e=>setForm({...form,status:e.target.value})}>
           {["Planned","Active","Done"].map(s=><option key={s}>{s}</option>)}
@@ -1487,7 +1519,7 @@ function Milestones({sprints,milestones,form,setForm,addMilestone,patchMilestone
   </section>
 }
 
-function EditableMilestone({milestone,index,patchMilestone,deleteMilestone}) {
+function EditableMilestone({milestone,index,isLast,patchMilestone,deleteMilestone}) {
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...milestone});
 
@@ -1515,7 +1547,7 @@ function EditableMilestone({milestone,index,patchMilestone,deleteMilestone}) {
     </div> : <div className="manualMilestoneCard form">
       <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
       <input type="date" value={draft.target_date || ""} onChange={e=>setDraft({...draft,target_date:e.target.value})}/>
-      <input type="number" min="1" value={draft.order_index || index} onChange={e=>setDraft({...draft,order_index:Number(e.target.value)})}/>
+      <select value={draft.order_index || index} onChange={e=>setDraft({...draft,order_index:Number(e.target.value)})}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select>
       <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})}/>
       <select value={draft.status || "Planned"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Planned","Active","Done"].map(s=><option key={s}>{s}</option>)}</select>
       <div className="buttonRow">
@@ -1524,7 +1556,15 @@ function EditableMilestone({milestone,index,patchMilestone,deleteMilestone}) {
       </div>
     </div>}
     <div className="manualMilestoneStem"></div>
+    {milestone.status === "Active" && <div className="workerIcon" title="Active milestone">👷</div>}
+    {isLast && <div className="finishFlag" title="Final milestone">🚩</div>}
     <div className="manualMilestoneDot"></div>
+  </div>
+}
+
+function DoneFireworks() {
+  return <div className="doneFireworks" aria-label="Task completed">
+    <span>🎆</span><span>✨</span><span>🎇</span><span>✨</span><span>🎆</span>
   </div>
 }
 
