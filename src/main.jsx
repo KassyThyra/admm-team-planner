@@ -16,7 +16,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const sprintColumns = ["To Do", "Doing", "Review", "Done"];
 const priorities = ["P1", "P2", "P3", "P4"];
 const storyPointOptions = [1, 2, 3, 5, 8, 13];
-const disciplines = ["Software", "Systems Engineering", "Electronics", "Mechanics", "Testing", "Manufacturing", "Dokumentation", "Project Management"];
+const disciplines = ["Software", "Systems Engineering", "Electronics", "Mechanics", "Testing", "Manufacturing", "Documentation", "Project Management"];
 const areaOptions = [
   { value: "Project Management", label: "Project Management" },
   { value: "Systems Engineering", label: "Systems Engineering" },
@@ -24,8 +24,8 @@ const areaOptions = [
   { value: "Electronics", label: "Electronics" },
   { value: "Mechanics", label: "Mechanics" },
   { value: "Testing", label: "Testing" },
-  { value: "Manufacturing", label: "Manufacturing / Bauen" },
-  { value: "Dokumentation", label: "Dokumentation" },
+  { value: "Manufacturing", label: "Manufacturing / Build" },
+  { value: "Documentation", label: "Documentation" },
 ];
 const roleOptions = [
   "Project Manager",
@@ -49,13 +49,13 @@ const roleAreaMap = {
   "Mechanical Engineer": "Mechanics",
   "Test Engineer": "Testing",
   "Manufacturing": "Manufacturing",
-  "Documentation": "Dokumentation",
+  "Documentation": "Documentation",
   "Team Member": "Project Management",
 };
 function roleToArea(role) { return roleAreaMap[role] || "Project Management"; }
 function roleToIsPm(role) { return role === "Project Manager"; }
-const workTypes = ["Organisation", "Bestellung", "Testing", "Manufacturing / Bauen", "Recherche", "Dokumentation", "Integration", "Meeting / Abstimmung", "Fehlerbehebung", "Design / Konstruktion", "Review / Freigabe"];
-const orderStatus = ["Benötigt", "Bestellt", "Versendet", "Angekommen"];
+const workTypes = ["Organization", "Ordering", "Testing", "Manufacturing / Build", "Research", "Documentation", "Integration", "Meeting / Alignment", "Troubleshooting", "Design / Construction", "Review / Approval"];
+const orderStatus = ["Needed", "Ordered", "Shipped", "Arrived"];
 const meetingTypes = ["Sprint Planning", "Weekly", "Sprint Review", "Retrospective", "Extra Meeting"];
 const levelRules = [
   { level: 1, title: "Projekt gestartet", needed: 0 },
@@ -106,7 +106,8 @@ function App() {
   }, [isConfigured]);
 
   useEffect(() => {
-    localStorage.setItem("admm-active-tab", tab);
+    if (tab === "area" || tab === "pm") setTab("dashboard");
+    else localStorage.setItem("admm-active-tab", tab);
   }, [tab]);
 
   useEffect(() => {
@@ -159,7 +160,7 @@ function App() {
     setFiles(filesRes.data || []); setOrders(ordersRes.data || []); setBlockers(blockersRes.data || []);
     setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []);
     if (!selectedSprintId) {
-      const active = (sprintsRes.data || []).find(s => s.status === "Aktiv") || (sprintsRes.data || [])[0];
+      const active = (sprintsRes.data || []).find(s => s.status === "Active") || (sprintsRes.data || [])[0];
       if (active) setSelectedSprintId(active.id);
     }
   }
@@ -173,7 +174,7 @@ function App() {
         id: data.user.id, display_name: authForm.displayName || authForm.email.split("@")[0],
         role: authForm.role, area: authForm.area || roleToArea(authForm.role), is_pm: roleToIsPm(authForm.role)
       });
-      setMessage("Account erstellt. Jetzt einloggen.");
+      setMessage("Account created. You can now sign in.");
       setAuthMode("signin");
     }
   }
@@ -195,13 +196,13 @@ function App() {
   }
   async function signOut() { await supabase.auth.signOut(); }
 
-  const activeSprint = sprints.find(s => s.id === selectedSprintId) || sprints.find(s => s.status === "Aktiv") || sprints[0];
+  const activeSprint = sprints.find(s => s.id === selectedSprintId) || sprints.find(s => s.status === "Active") || sprints[0];
   const doneTasks = tasks.filter(t => t.status === "Done");
   const currentLevelNumber = sprintLevel(sprints);
   const currentLevel = { level: currentLevelNumber, title: `Sprint-Level ${currentLevelNumber}` };
   const nextLevel = null;
-  const overdueTasks = tasks.filter(t => t.deadline && new Date(t.deadline) < startOfToday() && t.status !== "Done");
-  const backlogTasks = tasks.filter(t => !t.sprint_id && t.backlog_status !== "Erledigt");
+  const overdueTasks = tasks.filter(isOverdueTask);
+  const backlogTasks = tasks;
   const sprintTasks = activeSprint ? tasks.filter(t => t.sprint_id === activeSprint.id) : [];
   const plannedPoints = sprintTasks.reduce((sum, t) => sum + Number(t.points || 0), 0);
   const activeSprintPoints = activeSprint ? sprintPoints(tasks, activeSprint.id) : {done:0,total:0};
@@ -210,7 +211,7 @@ function App() {
   const mySchedule = profile ? schedule.filter(s => s.profile_id === profile.id) : [];
   const unreadNotifications = profile ? notifications.filter(n => n.profile_id === profile.id && !n.is_read) : [];
 
-  function nameOf(id) { return profiles.find(p => p.id === id)?.display_name || "Nicht zugeordnet"; }
+  function nameOf(id) { return profiles.find(p => p.id === id)?.display_name || "Unassigned"; }
   function assigneesOf(taskId) { return assignees.filter(a => a.task_id === taskId).map(a => profiles.find(p => p.id === a.profile_id)).filter(Boolean); }
   function commentsOf(taskId) { return comments.filter(c => c.task_id === taskId); }
   function filesOf(taskId) { return files.filter(f => f.task_id === taskId); }
@@ -225,9 +226,9 @@ function App() {
       ME: "Mechanics",
       TEST: "Testing",
       MFG: "Manufacturing",
-      DOC: "Dokumentation",
+      DOC: "Documentation",
     };
-    return map[value] || value || "Nicht zugeordnet";
+    return map[value] || value || "Unassigned";
   }
   function displayArea(value) {
     return areaOptions.find(a => a.value === normalizeArea(value))?.label || normalizeArea(value);
@@ -248,7 +249,7 @@ function App() {
       title: taskForm.title, description: taskForm.description, owner_id: primaryOwner,
       area: taskForm.discipline, discipline: taskForm.discipline, work_type: taskForm.work_type,
       priority: taskForm.priority, deadline: taskForm.deadline || null, points: Number(taskForm.points || 3),
-      status: taskForm.status, backlog_status: taskForm.sprint_id ? "Im Sprint" : "Geplant", sprint_id: taskForm.sprint_id || null,
+      status: taskForm.status, backlog_status: taskForm.sprint_id ? "In Sprint" : "Planned", sprint_id: taskForm.sprint_id || null,
       done_definition: taskForm.done_definition, evidence: taskForm.evidence, planned_start: taskForm.planned_start || null,
       planned_end: taskForm.planned_end || null, created_by: profile?.id
     };
@@ -257,13 +258,13 @@ function App() {
     const assigned = Array.from(new Set([primaryOwner, ...taskForm.assignee_ids].filter(Boolean)));
     if (assigned.length) await supabase.from("task_assignees").insert(assigned.map(profile_id => ({ task_id: data.id, profile_id })));
     if (taskForm.dependency_ids.length) await supabase.from("task_dependencies").insert(taskForm.dependency_ids.map(depends_on_task_id => ({ task_id: data.id, depends_on_task_id })));
-    await notifyMany(assigned, "Neue Aufgabe zugewiesen", data.title);
+    await notifyMany(assigned, "New task assigned", data.title);
     setTaskForm(emptyTask());
   }
 
   async function patchTask(id, patch) { const { error } = await supabase.from("tasks").update(patch).eq("id", id); if (error) alert(error.message); }
   async function deleteTask(id) {
-    if (!confirm("Aufgabe wirklich löschen? Sie wird auch aus Backlog, Sprints, Verantwortlichkeiten, Kommentaren, Datei-Listen und Abhängigkeiten entfernt.")) return;
+    if (!confirm("Delete this task? It will be removed from backlog, sprints, assignments, comments, files and dependencies.")) return;
 
     const { data: taskFiles } = await supabase
       .from("task_files")
@@ -284,21 +285,21 @@ function App() {
   async function moveTask(task, newStatus) {
     const check = canMoveTask(task, newStatus, profile, assigneesOf(task.id), depsOf(task.id));
     if (!check.ok) { alert(check.message); return; }
-    await patchTask(task.id, { status: newStatus, backlog_status: newStatus === "Done" ? "Erledigt" : "Im Sprint" });
+    await patchTask(task.id, { status: newStatus, backlog_status: newStatus === "Done" ? "Done" : "In Sprint" });
   }
   async function addTaskToSprint(taskId, sprintId) {
     if (!sprintId) {
-      alert("Es gibt noch keinen aktuellen Sprint. Lege zuerst unter 'Sprints & Protokolle' einen Sprint an und setze ihn auf 'Aktiv'.");
+      alert("Es gibt noch keinen aktuellen Sprint. Lege zuerst unter 'Sprints & Minutes' einen Sprint an und setze ihn auf 'Active'.");
       return;
     }
     const { error } = await supabase
       .from("tasks")
-      .update({ sprint_id: sprintId, backlog_status: "Im Sprint", status: "To Do" })
+      .update({ sprint_id: sprintId, backlog_status: "In Sprint", status: "To Do" })
       .eq("id", taskId);
 
     if (error) alert(error.message);
   }
-  async function removeTaskFromSprint(taskId) { await patchTask(taskId, { sprint_id: null, backlog_status: "Geplant", status: "Backlog" }); }
+  async function removeTaskFromSprint(taskId) { await patchTask(taskId, { sprint_id: null, backlog_status: "Planned", status: "Backlog" }); }
 
   async function addComment(taskId, body, clear) {
     if (!body.trim()) return;
@@ -334,7 +335,7 @@ function App() {
   }
 
   async function deleteGenericFile(fileRow) {
-    if (!confirm("Datei wirklich entfernen?")) return;
+    if (!confirm("Remove this file?")) return;
     if (fileRow.storage_path) await supabase.storage.from("task-files").remove([fileRow.storage_path]);
     const { error } = await supabase.from("generic_files").delete().eq("id", fileRow.id);
     if (error) alert(error.message);
@@ -349,11 +350,11 @@ function App() {
     if (error) alert(error.message);
   }
   async function deleteSprint(id) {
-    if (!confirm("Sprint wirklich löschen? Aufgaben aus diesem Sprint werden nicht gelöscht, sondern zurück ins Backlog gesetzt.")) return;
+    if (!confirm("Delete this sprint? Tasks will not be deleted; they will be moved back to the backlog.")) return;
 
     await supabase
       .from("tasks")
-      .update({ sprint_id: null, backlog_status: "Geplant", status: "Backlog" })
+      .update({ sprint_id: null, backlog_status: "Planned", status: "Backlog" })
       .eq("sprint_id", id);
 
     const { error } = await supabase.from("sprints").delete().eq("id", id);
@@ -363,7 +364,7 @@ function App() {
   async function addOrder(e) {
     e.preventDefault();
     if (!orderForm.name.trim()) {
-      alert("Bitte eintragen, was bestellt werden muss.");
+      alert("Please enter what needs to be ordered.");
       return;
     }
     const payload = { ...orderForm, owner_id: orderForm.owner_id || profile?.id };
@@ -379,17 +380,17 @@ function App() {
     if (error) alert(error.message);
   }
   async function deleteOrder(id) {
-    if (!confirm("Bestellung wirklich löschen?")) return;
+    if (!confirm("Ordering wirklich löschen?")) return;
     const { error } = await supabase.from("orders").delete().eq("id", id);
     if (error) alert(error.message);
   }
   async function addBlocker(e) {
     e.preventDefault();
     if (!blockerForm.question.trim()) {
-      alert("Bitte eine Frage oder einen Blocker eintragen.");
+      alert("Please enter a question or blocker.");
       return;
     }
-    const { error } = await supabase.from("blockers").insert({ ...blockerForm, owner_id: profile?.id, status: "Offen", answer: "" });
+    const { error } = await supabase.from("blockers").insert({ ...blockerForm, owner_id: profile?.id, status: "Open", answer: "" });
     if (error) alert(error.message); else setBlockerForm(emptyBlocker());
   }
   async function patchBlocker(id, patch) {
@@ -397,7 +398,7 @@ function App() {
     if (error) alert(error.message);
   }
   async function deleteBlocker(id) {
-    if (!confirm("Frage / Blocker wirklich löschen?")) return;
+    if (!confirm("Delete this question / blocker?")) return;
     const { error } = await supabase.from("blockers").delete().eq("id", id);
     if (error) alert(error.message);
   }
@@ -407,7 +408,7 @@ function App() {
     if (error) alert(error.message); else setScheduleForm(emptySchedule());
   }
   async function deleteSchedule(id) {
-    if (!confirm("Zeitplan-Eintrag wirklich löschen?")) return;
+    if (!confirm("Delete this calendar entry?")) return;
     const { error } = await supabase.from("schedule_items").delete().eq("id", id);
     if (error) alert(error.message);
   }
@@ -421,7 +422,7 @@ function App() {
     if (error) alert(error.message);
   }
   async function deleteMeeting(id) {
-    if (!confirm("Meeting-Protokoll wirklich löschen?")) return;
+    if (!confirm("Delete this meeting minutes entry?")) return;
     const { error } = await supabase.from("meetings").delete().eq("id", id);
     if (error) alert(error.message);
   }
@@ -430,16 +431,16 @@ function App() {
     if (rows.length) await supabase.from("notifications").insert(rows);
   }
 
-  if (loading) return <main className="page center">Lade...</main>;
-  if (!isConfigured) return <main className="page center"><section className="loginCard"><h1>Supabase fehlt</h1><p>Prüfe Vercel Environment Variables oder lokale .env.</p></section></main>;
+  if (loading) return <main className="page center">Loading...</main>;
+  if (!isConfigured) return <main className="page center"><section className="loginCard"><h1>Supabase missing</h1><p>Check Vercel environment variables or your local .env.</p></section></main>;
 
   if (!session) return (
     <main className="page loginPage">
       <section className="loginCard">
         <div className="brandCircle"><Rocket /></div>
         <h1>ADMM Team Planner</h1>
-        <p className="muted">Finale Version mit Backlog, Sprint-System, Historie, Uploads und PM-Dashboard.</p>
-        <div className="switch"><button className={authMode === "signin" ? "active" : ""} onClick={() => setAuthMode("signin")}>Einloggen</button><button className={authMode === "signup" ? "active" : ""} onClick={() => setAuthMode("signup")}>Registrieren</button></div>
+        <p className="muted">Project workspace for backlog, sprints, calendar, files and team planning.</p>
+        <div className="switch"><button className={authMode === "signin" ? "active" : ""} onClick={() => setAuthMode("signin")}>Sign in</button><button className={authMode === "signup" ? "active" : ""} onClick={() => setAuthMode("signup")}>Register</button></div>
         <form className="form" onSubmit={authMode === "signin" ? signIn : signUp}>
           {authMode === "signup" && <>
             <input placeholder="Name" value={authForm.displayName} onChange={e => setAuthForm({ ...authForm, displayName: e.target.value })} />
@@ -453,9 +454,9 @@ function App() {
               {areaOptions.map(area => <option key={area.value} value={area.value}>{area.label}</option>)}
             </select>
           </>}
-          <input placeholder="E-Mail" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} />
-          <input placeholder="Passwort" type="password" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} />
-          <button className="primary">{authMode === "signin" ? "Einloggen" : "Account erstellen"}</button>
+          <input placeholder="Email" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} />
+          <input placeholder="Password" type="password" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} />
+          <button className="primary">{authMode === "signin" ? "Sign in" : "Create account"}</button>
         </form>{message && <p className="message">{message}</p>}
       </section>
     </main>
@@ -464,24 +465,24 @@ function App() {
   return (
     <main className="page">
       <header className="topbar">
-        <div><p className="eyebrow">ADMM Team Planner</p><h1>Backlog · Sprints · PM-Übersicht</h1><p className="muted">Aktueller Sprint: {activeSprint?.name || "Noch kein Sprint"} · Ziel: {activeSprint?.goal || "Noch kein Ziel"}</p></div>
+        <div><p className="eyebrow">ADMM Team Planner</p><h1>Backlog · Sprints · Team Overview</h1><p className="muted">Current Sprint: {activeSprint?.name || "No Sprint yet"} · Goal: {activeSprint?.goal || "Noch kein Goal"}</p></div>
         <UserBox profile={profile} email={session.user.email} unreadCount={unreadNotifications.length} patchProfile={patchProfile} signOut={signOut} displayArea={displayArea}/>
       </header>
 
       <section className="stats">
-        <Stat icon={<Rocket/>} label="Aktueller Sprint" value={activeSprint?.name || "-"} />
+        <Stat icon={<Rocket/>} label="Current Sprint" value={activeSprint?.name || "-"} />
         <Stat icon={<ClipboardList/>} label="Backlog" value={backlogTasks.length} />
-        <Stat icon={<AlertTriangle/>} label="Überfällig" value={overdueTasks.length} danger={overdueTasks.length > 0} />
+        <button className="statButton" onClick={() => setTab("overdue")}><Stat icon={<AlertTriangle/>} label="Overdue" value={overdueTasks.length} danger={overdueTasks.length > 0} /></button>
         <Stat icon={<Star/>} label={`Level ${currentLevel.level}`} value={currentLevel.title} />
       </section>
 
       <section className="levelCard">
-        <div><h2>{activeSprint?.goal || "Sprint-Ziel fehlt"}</h2><p>Level {currentLevel.level}: Nach jedem abgeschlossenen Sprint steigt das Level um 1.</p></div>
-        <div className="capacity"><strong>{activeSprintPoints.done}/{activeSprintPoints.total}</strong><span>Story Points erledigt</span></div>
+        <div><h2>{activeSprint?.goal || "Sprint-Goal fehlt"}</h2><p>Level {currentLevel.level}: The level increases by 1 after every completed sprint.</p></div>
+        <div className="capacity"><strong>{activeSprintPoints.done}/{activeSprintPoints.total}</strong><span>Story Points Done</span></div>
       </section>
 
       <nav className="tabs">
-        {["dashboard","backlog","sprint","history","me","calendar","area","orders","blockers","meetings","gantt"].map(id => (
+        {["dashboard","backlog","sprint","history","me","calendar","orders","blockers","meetings","gantt"].map(id => (
           <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
             {id === "area" ? `${displayArea(profile?.area)}-Übersicht` : labelForTab(id)}
           </button>
@@ -490,12 +491,12 @@ function App() {
       </nav>
 
       {tab === "dashboard" && <Dashboard activeSprint={activeSprint} tasks={tasks} sprintTasks={sprintTasks} overdueTasks={overdueTasks} orders={orders} blockers={blockers} currentLevel={currentLevel} plannedPoints={plannedPoints} />}
+      {tab === "overdue" && <OverdueList tasks={overdueTasks} nameOf={nameOf} assigneesOf={assigneesOf} setTab={setTab} />}
       {tab === "backlog" && <Backlog tasks={backlogTasks} profiles={profiles} sprints={sprints} activeSprint={activeSprint} form={taskForm} setForm={setTaskForm} addTask={addTask} addTaskToSprint={addTaskToSprint} deleteTask={deleteTask} />}
       {tab === "sprint" && <SprintBoard sprints={sprints} activeSprint={activeSprint} setSelectedSprintId={setSelectedSprintId} tasks={sprintTasks} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} removeTaskFromSprint={removeTaskFromSprint} />}
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} />}
       {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} />}
-      {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} profiles={profiles} assigneesOf={assigneesOf} nameOf={nameOf} />}
-      {tab === "area" && <AreaDashboard area={displayArea(profile?.area)} tasks={areaTasks(profile?.area)} blockers={blockers} orders={orders} activeSprint={activeSprint} />}
+      {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} profiles={profiles} assigneesOf={assigneesOf} nameOf={nameOf} />}
       {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
@@ -505,9 +506,26 @@ function App() {
 }
 
 function labelForTab(id) {
-  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Aktueller Sprint", history:"Sprint-Historie", me:"Mein Bereich", orders:"Bestellungen", blockers:"Fragen & Blocker", calendar:"Team-Kalender", area:"Bereichs-Übersicht", meetings:"Sprints & Protokolle", gantt:"Gantt"})[id];
+  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Current Sprint", history:"Sprint History", me:"My Area", orders:"Orders", blockers:"Questions & Blockers", calendar:"Team Calendar", meetings:"Sprints & Minutes", gantt:"Gantt"})[id];
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
+function taskEndDate(task) {
+  return task.planned_end || task.deadline || null;
+}
+function isDoneStatus(status) {
+  return status === "Done" || status === "Erledigt";
+}
+function isCompletedSprint(status) {
+  return status === "Completed" || status === "Abgeschlossen";
+}
+function appointmentVisibility(item) {
+  return item.visibility || "private";
+}
+function isOverdueTask(task) {
+  const end = taskEndDate(task);
+  return Boolean(end && new Date(end) < startOfToday() && !isDoneStatus(task.status));
+}
+
 function parsePriceValue(value) {
   if (value === null || value === undefined) return 0;
   const cleaned = String(value).replace("€", "").replace(/\s/g, "").replace(",", ".");
@@ -518,7 +536,7 @@ function formatEuro(value) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value || 0);
 }
 function downloadOrdersCsv(orders, nameOf) {
-  const header = ["Teil", "Beschreibung", "Lieferant/Shop", "Bestellnummer", "Menge", "Einzelpreis", "Gesamtpreis", "Status", "Verantwortlich", "Link"];
+  const header = ["Part", "Description", "Lieferant/Supplier / Shop", "Order number", "Quantity", "Unit price", "Totalpreis", "Status", "Owner", "Link"];
   const rows = orders.map(o => {
     const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
     const unitPrice = parsePriceValue(o.price);
@@ -552,13 +570,11 @@ function personTone(profileId, profiles = []) {
   const index = Math.max(0, profiles.findIndex(p => p.id === profileId));
   return `person-${(index % 10) + 1}`;
 }
-function sprintLevel(sprints) {
-  return sprints.filter(s => s.status === "Abgeschlossen").length + 1;
-}
+function sprintLevel(sprints) { return sprints.filter(s => isCompletedSprint(s.status)).length + 1; }
 function sprintPoints(tasks, sprintId) {
   const sprintTasks = tasks.filter(t => t.sprint_id === sprintId);
   const total = sprintTasks.reduce((sum, t) => sum + Number(t.points || 0), 0);
-  const done = sprintTasks.filter(t => t.status === "Done").reduce((sum, t) => sum + Number(t.points || 0), 0);
+  const done = sprintTasks.filter(t => isDoneStatus(t.status)).reduce((sum, t) => sum + Number(t.points || 0), 0);
   return { done, total };
 }
 function getTaskRange(tasks) {
@@ -580,7 +596,7 @@ function dateToColumn(date, days) {
 function buildBurndownData(sprint, tasks) {
   const sprintTasks = tasks.filter(t => t.sprint_id === sprint.id);
   const total = sprintTasks.reduce((sum,t)=>sum+Number(t.points||0),0);
-  const done = sprintTasks.filter(t => t.status === "Done").reduce((sum,t)=>sum+Number(t.points||0),0);
+  const done = sprintTasks.filter(t => isDoneStatus(t.status)).reduce((sum,t)=>sum+Number(t.points||0),0);
   const dates = daysBetweenDates(sprint.start_date, sprint.end_date);
   if (!dates.length) return [{date:"Heute", remaining: Math.max(0,total-done)}];
   return dates.map((date, index) => {
@@ -591,19 +607,19 @@ function buildBurndownData(sprint, tasks) {
 }
 function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() - new Date(dateString)) / (1000*60*60*24))); }
 function canMoveTask(task, newStatus, profile, taskAssignees, deps) {
-  if (!profile) return { ok: false, message: "Bitte einloggen." };
+  if (!profile) return { ok: false, message: "Please sign in." };
   const isOwner = task.owner_id === profile.id || taskAssignees.some(p => p.id === profile.id);
-  if (!isOwner && !profile.is_pm) return { ok: false, message: "Nur Verantwortliche oder PM dürfen diese Aufgabe verschieben." };
-  if (newStatus === "Doing" && (!task.description || !task.deadline)) return { ok: false, message: "Für Doing braucht die Aufgabe Beschreibung und Deadline." };
-  if (newStatus === "Review" && (!task.done_definition || !task.evidence)) return { ok: false, message: "Für Review braucht die Aufgabe Definition of Done und Ergebnis/Doku." };
-  if (newStatus === "Done" && task.status !== "Review") return { ok: false, message: "Eine Aufgabe darf erst nach Review auf Done." };
-  if (newStatus === "Done" && deps.some(d => d.status !== "Done")) return { ok: false, message: "Abhängigkeiten sind noch nicht Done." };
+  if (!isOwner && !profile.is_pm) return { ok: false, message: "Nur Ownere oder PM dürfen diese Aufgabe verschieben." };
+  if (newStatus === "Doing" && (!task.description || !task.deadline)) return { ok: false, message: "Für Doing braucht die Aufgabe Description und Deadline." };
+  if (newStatus === "Review" && (!task.done_definition || !task.evidence)) return { ok: false, message: "To move to Review, the task needs a Definition of Done and evidence/review notes." };
+  if (newStatus === "Done" && task.status !== "Review") return { ok: false, message: "A task can only move to Done after Review." };
+  if (newStatus === "Done" && deps.some(d => d.status !== "Done")) return { ok: false, message: "Dependencies are not Done yet." };
   return { ok: true };
 }
 
-function emptyTask(){return{title:"",description:"",owner_id:"",assignee_ids:[],dependency_ids:[],discipline:"Software",work_type:"Organisation",priority:"P3",deadline:"",points:3,status:"Backlog",sprint_id:"",done_definition:"",evidence:"",planned_start:"",planned_end:""}}
-function emptySprint(){return{name:"",goal:"",start_date:"",end_date:"",status:"Geplant",capacity_points:0}}
-function emptyOrder(){return{name:"",description:"",shop:"",order_number:"",quantity:"1",price:"",supplier_link:"",owner_id:"",status:"Benötigt"}}
+function emptyTask(){return{title:"",description:"",owner_id:"",assignee_ids:[],dependency_ids:[],discipline:"Software",work_type:"Organization",priority:"P3",deadline:"",points:3,status:"Backlog",sprint_id:"",done_definition:"",evidence:"",planned_start:"",planned_end:""}}
+function emptySprint(){return{name:"",goal:"",start_date:"",end_date:"",status:"Planned",capacity_points:0}}
+function emptyOrder(){return{name:"",description:"",shop:"",order_number:"",quantity:"1",price:"",supplier_link:"",owner_id:"",status:"Needed"}}
 function emptyBlocker(){return{question:"",tried:"",needed_from:""}}
 function emptySchedule(){return{title:"",task_id:"",start_date:new Date().toISOString().slice(0,10),end_date:"",notes:"",visibility:"private"}}
 function emptyMeeting(){return{sprint_id:"",meeting_type:"Weekly",title:"",meeting_date:new Date().toISOString().slice(0,10),participants:"",decisions:"",open_points:"",next_steps:""}}
@@ -621,28 +637,66 @@ function UserBox({profile,email,unreadCount,patchProfile,signOut,displayArea}) {
     {!editing ? <>
       <strong>{profile?.display_name || email}</strong>
       <span>{profile?.role} · {displayArea(profile?.area)}</span>
-      <span>{unreadCount} neue Hinweise</span>
-      <div className="buttonRow"><button className="secondary" onClick={()=>setEditing(true)}>Profil bearbeiten</button><button className="secondary" onClick={signOut}><LogOut size={16}/> Logout</button></div>
+      <span>{unreadCount} new notifications</span>
+      <div className="buttonRow"><button className="secondary" onClick={()=>setEditing(true)}>Edit profile</button><button className="secondary" onClick={signOut}><LogOut size={16}/> Logout</button></div>
     </> : <>
       <input value={draft.display_name} onChange={e=>setDraft({...draft,display_name:e.target.value})} placeholder="Name"/>
       <select value={draft.role} onChange={e=>setDraft({...draft,role:e.target.value})}>{roleOptions.map(role=><option key={role} value={role}>{role}</option>)}</select>
-      <div className="buttonRow"><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></div>
+      <div className="buttonRow"><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></div>
     </>}
   </div>
 }
 
 function Dashboard({activeSprint,tasks,sprintTasks,overdueTasks,orders,blockers,currentLevel,plannedPoints}) {
-  return <section className="grid two"><Card title="Projektstatus"><ul className="checkList"><li>Aktueller Sprint: {activeSprint?.name || "-"}</li><li>Sprintziel: {activeSprint?.goal || "-"}</li><li>Sprint-Aufgaben: {sprintTasks.length}</li><li>Erledigte Aufgaben gesamt: {tasks.filter(t=>t.status==="Done").length}</li><li>Team-Level: Level {currentLevel.level}</li><li>Story Points geplant: {plannedPoints}/{activeSprint?.capacity_points || 0}</li></ul></Card><Card title="Risiken"><ul className="checkList"><li>Überfällig: {overdueTasks.length}</li><li>Offene Bestellungen: {orders.filter(o=>o.status!=="Angekommen").length}</li><li>Offene Blocker: {blockers.filter(b=>b.status!=="Gelöst").length}</li></ul></Card></section>
+  const sprintDonePoints = activeSprint ? sprintPoints(tasks, activeSprint.id).done : 0;
+  const sprintTotalPoints = activeSprint ? sprintPoints(tasks, activeSprint.id).total : 0;
+  return <section className="grid two">
+    <Card title="Project Status">
+      <ul className="checkList">
+        <li>Current Sprint: {activeSprint?.name || "-"}</li>
+        <li>Sprint Goal: {activeSprint?.goal || "-"}</li>
+        <li>Sprint Tasks: {sprintTasks.length}</li>
+        <li>Story Points Done: {sprintDonePoints}/{sprintTotalPoints}</li>
+        <li>Done Tasks Total: {tasks.filter(t=>isDoneStatus(t.status)).length}</li>
+        <li>Team Level: Level {currentLevel.level}</li>
+      </ul>
+    </Card>
+    <Card title="Risks">
+      <ul className="checkList">
+        <li>Overdue tasks: {overdueTasks.length}</li>
+        <li>Open orders: {orders.filter(o=>o.status!=="Arrived" && o.status!=="Angekommen").length}</li>
+        <li>Open blockers: {blockers.filter(b=>b.status!=="Resolved" && b.status!=="Gelöst").length}</li>
+      </ul>
+    </Card>
+  </section>
+}
+
+function OverdueList({tasks,nameOf,assigneesOf,setTab}) {
+  return <section className="card">
+    <div className="row">
+      <h2>Overdue Tasks</h2>
+      <button className="secondary" onClick={()=>setTab("dashboard")}>Back to Dashboard</button>
+    </div>
+    <p className="muted">A task is overdue only if its end date or deadline is in the past and it is not marked Done.</p>
+    <div className="taskList">
+      {tasks.length === 0 && <p className="empty">No overdue tasks.</p>}
+      {tasks.map(t => <div className="itemCard dangerBorder" key={t.id}>
+        <div className="row"><strong>{t.title}</strong><span className="badge danger">{taskEndDate(t)}</span></div>
+        <p>{t.description || "No description."}</p>
+        <p className="muted">Owner: {assigneesOf(t.id).map(p=>p.display_name).join(", ") || nameOf(t.owner_id)} · Status: {t.status} · {t.points || 0} SP</p>
+      </div>)}
+    </div>
+  </section>
 }
 
 function Backlog({tasks,profiles,sprints,activeSprint,form,setForm,addTask,addTaskToSprint,deleteTask}) {
   return <section className="grid two">
-    <Card title="Neue Backlog-Aufgabe">
+    <Card title="New Backlog Task">
       <TaskForm form={form} setForm={setForm} profiles={profiles} sprints={sprints} allTasks={tasks} submit={addTask}/>
     </Card>
     <div>
-      <h2>Backlog nach Priorität</h2>
-      <p className="muted">Alle Aufgaben bleiben sichtbar. Klicke auf eine Aufgabe, um Details zu sehen.</p>
+      <h2>Backlog by Priority</h2>
+      <p className="muted">All tasks stay visible. Click a task to show details.</p>
       <div className="taskList">
         {tasks.map(task=>
           <BacklogTaskCard key={task.id} task={task} profiles={profiles} activeSprint={activeSprint} addTaskToSprint={addTaskToSprint} deleteTask={deleteTask}/>
@@ -661,7 +715,7 @@ function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}
     owner_id: task.owner_id || "",
     priority: task.priority || "P3",
     discipline: task.discipline || task.area || "Software",
-    work_type: task.work_type || "Organisation",
+    work_type: task.work_type || "Organization",
     points: task.points || 3,
     deadline: task.deadline || "",
     planned_start: task.planned_start || "",
@@ -694,21 +748,21 @@ function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}
       <span className="badge">{task.priority} · {task.points} SP</span>
     </div>
     {open && !editing && <>
-      <p>{task.description || "Keine Beschreibung."}</p>
-      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline || "offen"} · Zeitraum {task.planned_start || "offen"} → {task.planned_end || task.deadline || "offen"}</p>
+      <p>{task.description || "Keine Description."}</p>
+      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline || "open"} · Period {task.planned_start || "open"} → {task.planned_end || task.deadline || "open"}</p>
       <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
       <p><b>Evidence:</b> {task.evidence || "-"}</p>
       <div className="buttonRow">
-        <button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>In aktuellen Sprint</button>
-        <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button>
-        <button className="iconBtn" onClick={()=>deleteTask(task.id)} title="Aufgabe löschen"><Trash2 size={16}/></button>
+        <button className="secondary" onClick={()=>addTaskToSprint(task.id, activeSprint?.id)}>Move to current sprint</button>
+        <button className="secondary" onClick={()=>setEditing(true)}>Edit</button>
+        <button className="iconBtn" onClick={()=>deleteTask(task.id)} title="Delete task"><Trash2 size={16}/></button>
       </div>
     </>}
     {open && editing && <div className="form">
-      <input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Titel"/>
-      <textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Beschreibung"/>
+      <input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Title"/>
+      <textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Description"/>
       <select value={draft.owner_id} onChange={e=>setDraft({...draft,owner_id:e.target.value})}>
-        <option value="">Hauptverantwortliche/r</option>
+        <option value="">Main owner</option>
         {profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}
       </select>
       <div className="formRow">
@@ -720,8 +774,8 @@ function BacklogTaskCard({task,profiles,activeSprint,addTaskToSprint,deleteTask}
       <div className="formRow"><input type="date" value={draft.planned_start || ""} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/><input type="date" value={draft.planned_end || ""} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/></div>
       <input type="date" value={draft.deadline || ""} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
       <textarea placeholder="Definition of Done" value={draft.done_definition || ""} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
-      <textarea placeholder="Evidence / Review-Doku" value={draft.evidence || ""} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
-      <div className="buttonRow"><button className="primary" type="button" onClick={saveBacklogTask}>Speichern</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button></div>
+      <textarea placeholder="Evidence / Review notes" value={draft.evidence || ""} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
+      <div className="buttonRow"><button className="primary" type="button" onClick={saveBacklogTask}>Save</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button></div>
     </div>}
   </div>
 }
@@ -747,21 +801,21 @@ function BurndownChart({sprint,tasks}) {
     return `${x},${y}`;
   }).join(" ");
   return <section className="card miniBurn">
-    <div className="row"><h2>Burndown Chart</h2><span className="muted">Offene Story Points</span></div>
+    <div className="row"><h2>Burndown Chart</h2><span className="muted">Remaining Story Points</span></div>
     <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={points} fill="none" stroke="currentColor" strokeWidth="3"/></svg>
     <div className="chartLabels"><span>{data[0]?.date}</span><span>{data[data.length-1]?.date}</span></div>
   </section>
 }
 
 function SprintHistory({sprints,tasks,meetings,setSelectedSprintId}) {
-  return <section className="taskList">{sprints.map(s=>{const st=tasks.filter(t=>t.sprint_id===s.id); const done=st.filter(t=>t.status==="Done").length; return <div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><button className="secondary" onClick={()=>setSelectedSprintId(s.id)}>Öffnen</button></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · {s.status} · {done}/{st.length} erledigt</p><p><b>Protokolle:</b> {meetings.filter(m=>m.sprint_id===s.id).length}</p></div>})}</section>
+  return <section className="taskList">{sprints.map(s=>{const st=tasks.filter(t=>t.sprint_id===s.id); const done=st.filter(t=>t.status==="Done").length; return <div className="itemCard" key={s.id}><div className="row"><strong>{s.name}</strong><button className="secondary" onClick={()=>setSelectedSprintId(s.id)}>Öffnen</button></div><p>{s.goal}</p><p className="muted">{s.start_date} bis {s.end_date} · {s.status} · {done}/{st.length} erledigt</p><p><b>Minutes:</b> {meetings.filter(m=>m.sprint_id===s.id).length}</p></div>})}</section>
 }
 
 function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile}) {
   return <section className="grid two">
     <div className="stack">
       <MyCalendar tasks={tasks} schedule={schedule} form={form} setForm={setForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule}/>
-      <Card title="Meine Termine als Liste">
+      <Card title="My Appointments as List">
         <div className="taskList">
           {schedule.map(s=><div className="itemCard" key={s.id}>
             <div className="row"><strong>{s.title}</strong><button className="iconBtn" onClick={()=>deleteSchedule(s.id)} title="Zeitplan löschen"><Trash2 size={16}/></button></div>
@@ -771,8 +825,8 @@ function MyArea({profile,tasks,schedule,form,setForm,addSchedule,deleteSchedule,
       </Card>
     </div>
     <div>
-      <h2>Meine Aufgaben</h2>
-      <p className="muted">Hier erscheinen Aufgaben, bei denen du Hauptverantwortliche/r oder zusätzlich verantwortlich bist.</p>
+      <h2>My Tasks</h2>
+      <p className="muted">Hier erscheinen Aufgaben, bei denen du Main owner oder zusätzlich verantwortlich bist.</p>
       <div className="taskList">
         {tasks.length === 0 && <p className="empty">Keine eigenen Aufgaben.</p>}
         {tasks.map(t=><TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile}/>)}
@@ -869,7 +923,7 @@ function CalendarGrid({ items, title }) {
   </div>
 }
 
-function TeamCalendar({sprints,tasks,profiles,assigneesOf,nameOf}) {
+function TeamCalendar({sprints,tasks,schedule,profiles,assigneesOf,nameOf}) {
   const items = [
     ...sprints.map(s => ({
       id:`sprint-${s.id}`,
@@ -880,12 +934,21 @@ function TeamCalendar({sprints,tasks,profiles,assigneesOf,nameOf}) {
       meta:s.goal || s.status,
       tone:"sprint"
     })),
+    ...schedule.filter(s => appointmentVisibility(s) === "group").map(s => ({
+      id:`group-${s.id}`,
+      type:"Group Appointment",
+      title:s.title,
+      start:s.start_date,
+      end:s.end_date || s.start_date,
+      meta:s.notes || nameOf(s.profile_id),
+      tone:"groupAppointment"
+    })),
     ...tasks.map(t => {
       const assigned = assigneesOf(t.id);
       const ownerId = assigned[0]?.id || t.owner_id;
       return {
         id:`task-${t.id}`,
-        type:"Aufgabe",
+        type:"Task",
         title:t.title,
         start:t.planned_start || t.deadline,
         end:t.planned_end || t.deadline,
@@ -896,8 +959,10 @@ function TeamCalendar({sprints,tasks,profiles,assigneesOf,nameOf}) {
   ].filter(i=>i.start);
 
   return <section className="card">
-    <CalendarGrid items={items} title="Team-Kalender"/>
+    <CalendarGrid items={items} title="Team Calendar"/>
     <div className="personLegend">
+      <span className="legendChip groupAppointment">Group appointment</span>
+      <span className="legendChip sprint">Sprint</span>
       {profiles.map(p => <span key={p.id} className={`legendChip ${personTone(p.id, profiles)}`}>{p.display_name}</span>)}
     </div>
   </section>
@@ -906,11 +971,11 @@ function TeamCalendar({sprints,tasks,profiles,assigneesOf,nameOf}) {
 function MyCalendar({tasks,schedule,form,setForm,addSchedule,deleteSchedule}) {
   const items = [
     ...tasks.map(t => ({ id:`task-${t.id}`, type:"Aufgabe", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.status} · ${t.discipline || t.area}`, tone:"task" })),
-    ...schedule.filter(s => (s.visibility || "private") === "private").map(s => ({ id:`schedule-${s.id}`, type:"Eigener Termin", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"schedule" })),
+    ...schedule.filter(s => appointmentVisibility(s) === "private").map(s => ({ id:`schedule-${s.id}`, type:"Private Appointment", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"privateAppointment" })),
   ].filter(i=>i.start);
   return <section className="grid two">
-    <Card title="Eigenen Termin hinzufügen"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/></Card>
-    <section className="card"><CalendarGrid items={items} title="Mein Kalender"/></section>
+    <Card title="Add Appointment"><ScheduleForm form={form} setForm={setForm} tasks={tasks} submit={addSchedule}/></Card>
+    <section className="card"><CalendarGrid items={items} title="My Calendar"/></section>
   </section>
 }
 
@@ -924,10 +989,10 @@ function AreaDashboard({area,tasks,blockers,orders,activeSprint}) {
     <Card title={`${area}-Übersicht`}>
       <ul className="checkList">
         <li>Aufgaben im Bereich: {tasks.length}</li>
-        <li>Offen: {openTasks.length}</li>
+        <li>Open: {openTasks.length}</li>
         <li>Im aktuellen Sprint: {sprintTasks.length}</li>
         <li>In Review: {reviewTasks.length}</li>
-        <li>Überfällig: {overdue.length}</li>
+        <li>Overdue: {overdue.length}</li>
       </ul>
     </Card>
     <div className="stack">
@@ -936,7 +1001,7 @@ function AreaDashboard({area,tasks,blockers,orders,activeSprint}) {
         {tasks.length === 0 && <p className="empty">Noch keine Aufgaben in diesem Bereich.</p>}
         {tasks.map(t => <div className="itemCard" key={t.id}>
           <div className="row"><strong>{t.priority} · {t.title}</strong><span className="badge">{t.status}</span></div>
-          <p className="muted">{t.work_type} · Deadline {t.deadline || "offen"}</p>
+          <p className="muted">{t.work_type} · Deadline {t.deadline || "open"}</p>
         </div>)}
       </div>
     </div>
@@ -950,14 +1015,14 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
   }, 0);
 
   return <section className="grid two">
-    <Card title="Bestellung hinzufügen">
+    <Card title="Ordering hinzufügen">
       <OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/>
       <div className="priceSummary">
-        <strong>Gesamtpreis aller Bestellungen</strong>
+        <strong>Totalpreis aller Orderingen</strong>
         <span>{formatEuro(totalPrice)}</span>
       </div>
       <button className="secondary" type="button" onClick={()=>downloadOrdersCsv(orders, nameOf)}>
-        Excel-Liste exportieren
+        Export Excel-compatible CSV
       </button>
     </Card>
     <div className="taskList">
@@ -965,12 +1030,12 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
         <table className="ordersTable">
           <thead>
             <tr>
-              <th>Teil</th>
-              <th>Menge</th>
-              <th>Einzelpreis</th>
-              <th>Gesamt</th>
+              <th>Part</th>
+              <th>Quantity</th>
+              <th>Unit price</th>
+              <th>Total</th>
               <th>Status</th>
-              <th>Verantwortlich</th>
+              <th>Owner</th>
             </tr>
           </thead>
           <tbody>
@@ -978,7 +1043,7 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
               const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
               const unitPrice = parsePriceValue(o.price);
               return <tr key={o.id}>
-                <td>{o.name || "Bestellung"}</td>
+                <td>{o.name || "Ordering"}</td>
                 <td>{o.quantity || "1"}</td>
                 <td>{formatEuro(unitPrice)}</td>
                 <td>{formatEuro(unitPrice * quantity)}</td>
@@ -1006,47 +1071,47 @@ function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploa
       price: draft.price || "",
       supplier_link: draft.supplier_link || "",
       owner_id: draft.owner_id || null,
-      status: draft.status || "Benötigt"
+      status: draft.status || "Needed"
     });
     setEditing(false);
   }
   return <div className="itemCard">
     {!editing ? <>
-      <div className="row"><strong>{order.name || order.item || "Bestellung"}</strong><span className="badge">{order.status}</span></div>
+      <div className="row"><strong>{order.name || order.item || "Ordering"}</strong><span className="badge">{order.status}</span></div>
       <p>{order.description}</p>
-      <p className="muted">{order.shop} · {order.order_number} · Menge {order.quantity || "1"} · Einzelpreis {order.price || "-"} · Gesamt {formatEuro(parsePriceValue(order.price) * (Number.parseFloat(String(order.quantity || "1").replace(",", ".")) || 1))} · {nameOf(order.owner_id)}</p>
-      {order.supplier_link&&<a href={order.supplier_link} target="_blank" rel="noreferrer">Link öffnen</a>}
+      <p className="muted">{order.shop} · {order.order_number} · Quantity {order.quantity || "1"} · Unit price {order.price || "-"} · Total {formatEuro(parsePriceValue(order.price) * (Number.parseFloat(String(order.quantity || "1").replace(",", ".")) || 1))} · {nameOf(order.owner_id)}</p>
+      {order.supplier_link&&<a href={order.supplier_link} target="_blank" rel="noreferrer">Open link</a>}
     </> : <div className="form">
-      <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Was muss bestellt werden?"/>
-      <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Beschreibung"/>
-      <input value={draft.shop || ""} onChange={e=>setDraft({...draft,shop:e.target.value})} placeholder="Shop"/>
-      <input value={draft.order_number || ""} onChange={e=>setDraft({...draft,order_number:e.target.value})} placeholder="Bestellnummer"/>
+      <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="What needs to be ordered?"/>
+      <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Description"/>
+      <input value={draft.shop || ""} onChange={e=>setDraft({...draft,shop:e.target.value})} placeholder="Supplier / Shop"/>
+      <input value={draft.order_number || ""} onChange={e=>setDraft({...draft,order_number:e.target.value})} placeholder="Order number"/>
       <input value={draft.supplier_link || ""} onChange={e=>setDraft({...draft,supplier_link:e.target.value})} placeholder="Link"/>
-      <div className="formRow"><input value={draft.quantity || ""} onChange={e=>setDraft({...draft,quantity:e.target.value})} placeholder="Menge"/><input value={draft.price || ""} onChange={e=>setDraft({...draft,price:e.target.value})} placeholder="Preis"/></div>
-      <select value={draft.owner_id || ""} onChange={e=>setDraft({...draft,owner_id:e.target.value})}><option value="">Verantwortlich</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
-      <select value={draft.status || "Benötigt"} onChange={e=>setDraft({...draft,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+      <div className="formRow"><input value={draft.quantity || ""} onChange={e=>setDraft({...draft,quantity:e.target.value})} placeholder="Quantity"/><input value={draft.price || ""} onChange={e=>setDraft({...draft,price:e.target.value})} placeholder="Preis"/></div>
+      <select value={draft.owner_id || ""} onChange={e=>setDraft({...draft,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
+      <select value={draft.status || "Needed"} onChange={e=>setDraft({...draft,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
     </div>}
-    <FileBox title="Dateien zur Bestellung" files={files} onUpload={file=>uploadGenericFile("order", order.id, file)} onDelete={deleteGenericFile}/>
+    <FileBox title="Files zur Ordering" files={files} onUpload={file=>uploadGenericFile("order", order.id, file)} onDelete={deleteGenericFile}/>
     <div className="buttonRow">
-      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button> : <><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></>}
+      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></>}
       <select value={order.status} onChange={e=>patchOrder(order.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
-      <button className="iconBtn" onClick={()=>deleteOrder(order.id)} title="Bestellung löschen"><Trash2 size={16}/></button>
+      <button className="iconBtn" onClick={()=>deleteOrder(order.id)} title="Ordering löschen"><Trash2 size={16}/></button>
     </div>
   </div>
 }
 
 function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
   const sortedBlockers = [...blockers].sort((a,b) => {
-    if ((a.status === "Gelöst") !== (b.status === "Gelöst")) return a.status === "Gelöst" ? 1 : -1;
+    if ((a.status === "Resolved") !== (b.status === "Resolved")) return a.status === "Resolved" ? 1 : -1;
     return String(b.created_at || "").localeCompare(String(a.created_at || ""));
   });
   return <section className="grid two">
-    <Card title="Blocker posten">
+    <Card title="Post Blocker">
       <form className="form" onSubmit={addBlocker}>
-        <textarea placeholder="Problem / Frage" value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/>
-        <textarea placeholder="Schon versucht" value={form.tried} onChange={e=>setForm({...form,tried:e.target.value})}/>
-        <input placeholder="Hilfe benötigt von" value={form.needed_from} onChange={e=>setForm({...form,needed_from:e.target.value})}/>
-        <button className="primary"><HelpCircle size={18}/> Posten</button>
+        <textarea placeholder="Problem / Question" value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/>
+        <textarea placeholder="Already tried" value={form.tried} onChange={e=>setForm({...form,tried:e.target.value})}/>
+        <input placeholder="Help needed from" value={form.needed_from} onChange={e=>setForm({...form,needed_from:e.target.value})}/>
+        <button className="primary"><HelpCircle size={18}/> Post</button>
       </form>
     </Card>
     <div className="taskList">
@@ -1063,27 +1128,27 @@ function EditableBlocker({blocker,patchBlocker,deleteBlocker,files,uploadGeneric
       tried: draft.tried || "",
       needed_from: draft.needed_from || "",
       answer: draft.answer || "",
-      status: draft.status || "Offen"
+      status: draft.status || "Open"
     });
     setEditing(false);
   }
-  return <div className={blocker.status === "Gelöst" ? "itemCard resolved" : "itemCard"}>
+  return <div className={blocker.status === "Resolved" ? "itemCard resolved" : "itemCard"}>
     {!editing ? <>
-      <div className="row"><strong>{blocker.question}</strong><span className={blocker.status==="Gelöst"?"badge done":"badge danger"}>{blocker.status}</span></div>
-      <p><b>Schon versucht:</b> {blocker.tried || "-"}</p>
-      <p><b>Hilfe von:</b> {blocker.needed_from || "-"}</p>
-      <p><b>Antwort / Lösung:</b> {blocker.answer || "Noch keine Antwort"}</p>
+      <div className="row"><strong>{blocker.question}</strong><span className={blocker.status==="Resolved"?"badge done":"badge danger"}>{blocker.status}</span></div>
+      <p><b>Already tried:</b> {blocker.tried || "-"}</p>
+      <p><b>Help from:</b> {blocker.needed_from || "-"}</p>
+      <p><b>Answer / Solution:</b> {blocker.answer || "No answer yet"}</p>
     </> : <div className="form">
       <textarea value={draft.question || ""} onChange={e=>setDraft({...draft,question:e.target.value})} placeholder="Frage / Problem"/>
-      <textarea value={draft.tried || ""} onChange={e=>setDraft({...draft,tried:e.target.value})} placeholder="Schon versucht"/>
-      <input value={draft.needed_from || ""} onChange={e=>setDraft({...draft,needed_from:e.target.value})} placeholder="Hilfe benötigt von"/>
-      <textarea value={draft.answer || ""} onChange={e=>setDraft({...draft,answer:e.target.value})} placeholder="Antwort / Lösung — jeder kann hier antworten"/>
-      <select value={draft.status || "Offen"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Offen","In Klärung","Gelöst"].map(s=><option key={s}>{s}</option>)}</select>
+      <textarea value={draft.tried || ""} onChange={e=>setDraft({...draft,tried:e.target.value})} placeholder="Already tried"/>
+      <input value={draft.needed_from || ""} onChange={e=>setDraft({...draft,needed_from:e.target.value})} placeholder="Help needed from"/>
+      <textarea value={draft.answer || ""} onChange={e=>setDraft({...draft,answer:e.target.value})} placeholder="Answer / Solution — jeder kann hier antworten"/>
+      <select value={draft.status || "Open"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Open","In Clarification","Resolved"].map(s=><option key={s}>{s}</option>)}</select>
     </div>}
-    <FileBox title="Dateien zur Frage" files={files} onUpload={file=>uploadGenericFile("blocker", blocker.id, file)} onDelete={deleteGenericFile}/>
+    <FileBox title="Files for question" files={files} onUpload={file=>uploadGenericFile("blocker", blocker.id, file)} onDelete={deleteGenericFile}/>
     <div className="buttonRow">
-      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten / Antworten</button> : <><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></>}
-      <select value={blocker.status || "Offen"} onChange={e=>patchBlocker(blocker.id,{status:e.target.value})}>{["Offen","In Klärung","Gelöst"].map(s=><option key={s}>{s}</option>)}</select>
+      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit / Antworten</button> : <><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></>}
+      <select value={blocker.status || "Open"} onChange={e=>patchBlocker(blocker.id,{status:e.target.value})}>{["Open","In Clarification","Resolved"].map(s=><option key={s}>{s}</option>)}</select>
       <button className="iconBtn" onClick={()=>deleteBlocker(blocker.id)} title="Blocker löschen"><Trash2 size={16}/></button>
     </div>
   </div>
@@ -1091,11 +1156,11 @@ function EditableBlocker({blocker,patchBlocker,deleteBlocker,files,uploadGeneric
 
 function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,deleteSprint,meetingForm,setMeetingForm,addMeeting,patchMeeting,deleteMeeting,meetings,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
   return <section className="grid two">
-    <div className="stack"><Card title="Sprint anlegen"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting-Protokoll"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
+    <div className="stack"><Card title="Create Sprint"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting Minutes"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
     <div className="stack">
       <h2>Sprints</h2>
       {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
-      <h2>Protokolle</h2>
+      <h2>Minutes</h2>
       {meetings.map(m => <EditableMeeting key={m.id} meeting={m} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
@@ -1113,12 +1178,12 @@ function EditableSprint({sprint,patchSprint,deleteSprint,files,uploadGenericFile
       <textarea value={draft.goal || ""} onChange={e=>setDraft({...draft,goal:e.target.value})}/>
       <div className="formRow"><input type="date" value={draft.start_date || ""} onChange={e=>setDraft({...draft,start_date:e.target.value})}/><input type="date" value={draft.end_date || ""} onChange={e=>setDraft({...draft,end_date:e.target.value})}/></div>
       <input type="number" value={draft.capacity_points || 0} onChange={e=>setDraft({...draft,capacity_points:Number(e.target.value)})}/>
-      <select value={draft.status || "Geplant"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select>
+      <select value={draft.status || "Planned"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Planned","Active","Completed"].map(x=><option key={x}>{x}</option>)}</select>
     </div>}
-    <FileBox title="Dateien zum Sprint" files={files} onUpload={file=>uploadGenericFile("sprint", sprint.id, file)} onDelete={deleteGenericFile}/>
+    <FileBox title="Files for sprint" files={files} onUpload={file=>uploadGenericFile("sprint", sprint.id, file)} onDelete={deleteGenericFile}/>
     <div className="buttonRow">
-      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Bearbeiten</button> : <><button className="primary" onClick={save}>Speichern</button><button className="secondary" onClick={()=>setEditing(false)}>Abbrechen</button></>}
-      <select value={sprint.status} onChange={e=>patchSprint(sprint.id,{status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(x=><option key={x}>{x}</option>)}</select>
+      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></>}
+      <select value={sprint.status} onChange={e=>patchSprint(sprint.id,{status:e.target.value})}>{["Planned","Active","Completed"].map(x=><option key={x}>{x}</option>)}</select>
       <button className="iconBtn" onClick={()=>deleteSprint(sprint.id)}><Trash2 size={16}/></button>
     </div>
   </div>
@@ -1148,30 +1213,30 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
         <button className="iconBtn" onClick={()=>deleteMeeting(meeting.id)} title="Protokoll löschen"><Trash2 size={16}/></button>
       </div>
       <p className="muted">{meeting.meeting_type} · {meeting.meeting_date}</p>
-      <p><b>Teilnehmer:</b> {meeting.participants || "-"}</p>
-      <p><b>Entscheidungen:</b> {meeting.decisions || "-"}</p>
-      <p><b>Offen:</b> {meeting.open_points || "-"}</p>
-      <p><b>Nächste Schritte:</b> {meeting.next_steps || "-"}</p>
+      <p><b>Partnehmer:</b> {meeting.participants || "-"}</p>
+      <p><b>Decisions:</b> {meeting.decisions || "-"}</p>
+      <p><b>Open:</b> {meeting.open_points || "-"}</p>
+      <p><b>Next Steps:</b> {meeting.next_steps || "-"}</p>
     </> : <div className="form">
       <select value={draft.meeting_type || "Weekly"} onChange={e=>setDraft({...draft,meeting_type:e.target.value})}>
         {meetingTypes.map(t=><option key={t}>{t}</option>)}
       </select>
-      <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Titel"/>
+      <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Title"/>
       <input type="date" value={draft.meeting_date || ""} onChange={e=>setDraft({...draft,meeting_date:e.target.value})}/>
-      <textarea value={draft.participants || ""} onChange={e=>setDraft({...draft,participants:e.target.value})} placeholder="Teilnehmer"/>
-      <textarea value={draft.decisions || ""} onChange={e=>setDraft({...draft,decisions:e.target.value})} placeholder="Entscheidungen"/>
-      <textarea value={draft.open_points || ""} onChange={e=>setDraft({...draft,open_points:e.target.value})} placeholder="Offene Punkte"/>
-      <textarea value={draft.next_steps || ""} onChange={e=>setDraft({...draft,next_steps:e.target.value})} placeholder="Nächste Schritte"/>
+      <textarea value={draft.participants || ""} onChange={e=>setDraft({...draft,participants:e.target.value})} placeholder="Partnehmer"/>
+      <textarea value={draft.decisions || ""} onChange={e=>setDraft({...draft,decisions:e.target.value})} placeholder="Decisions"/>
+      <textarea value={draft.open_points || ""} onChange={e=>setDraft({...draft,open_points:e.target.value})} placeholder="Opene Punkte"/>
+      <textarea value={draft.next_steps || ""} onChange={e=>setDraft({...draft,next_steps:e.target.value})} placeholder="Next Steps"/>
     </div>}
 
-    <FileBox title="Dateien zum Protokoll" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
+    <FileBox title="Files for minutes" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
 
     <div className="buttonRow">
       {!editing
-        ? <button className="secondary" type="button" onClick={()=>setEditing(true)}>Protokoll bearbeiten</button>
+        ? <button className="secondary" type="button" onClick={()=>setEditing(true)}>Edit Minutes</button>
         : <>
-            <button className="primary" type="button" onClick={save}>Speichern</button>
-            <button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button>
+            <button className="primary" type="button" onClick={save}>Save</button>
+            <button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button>
           </>
       }
     </div>
@@ -1179,39 +1244,47 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
 }
 
 function Gantt({tasks}) {
-  const datedTasks = tasks.filter(t=>t.planned_start || t.planned_end || t.deadline);
+  const datedTasks = tasks
+    .filter(t => t.planned_start || t.planned_end || t.deadline)
+    .sort((a,b)=>String(a.planned_start || a.deadline || "").localeCompare(String(b.planned_start || b.deadline || "")));
   const range = getTaskRange(datedTasks);
   const days = daysBetweenDates(range.start, range.end);
+
   return <section className="card">
-    <h2>Gantt-Ansicht</h2>
-    <p className="muted">Balken zeigen, wann Aufgaben laufen und wo sie sich überschneiden.</p>
-    {datedTasks.length === 0 && <p className="empty">Noch keine Aufgaben mit Startdatum, Enddatum oder Deadline.</p>}
-    {datedTasks.length > 0 && <div className="realGantt" style={{gridTemplateColumns:`220px repeat(${Math.max(days.length,1)}, minmax(28px, 1fr))`}}>
-      <div className="ganttHead">Aufgabe</div>
-      {days.map(day=><div className="ganttDate" key={day}>{day.slice(5)}</div>)}
-      {datedTasks.map(task => {
-        const start = task.planned_start || task.deadline;
-        const end = task.planned_end || task.deadline || start;
-        const colStart = dateToColumn(start, days);
-        const colEnd = Math.max(colStart + 1, dateToColumn(end, days) + 1);
-        return <React.Fragment key={task.id}>
-          <div className="ganttTaskName">{task.title}</div>
-          <div className={`realGanttBar ${String(task.discipline || task.area || "").replaceAll(" ","-")}`} style={{gridColumn:`${colStart} / ${colEnd}`}}>
-            {task.points || 0} SP · {task.discipline || task.area}
-          </div>
-        </React.Fragment>
-      })}
+    <h2>Gantt View</h2>
+    <p className="muted">Each bar shows when a task is scheduled. Overlaps are visible because tasks share the same date grid.</p>
+    {datedTasks.length === 0 && <p className="empty">No tasks with start/end date or deadline yet.</p>}
+    {datedTasks.length > 0 && <div className="ganttScroll">
+      <div className="ganttTimeline" style={{gridTemplateColumns:`260px repeat(${Math.max(days.length,1)}, 38px)`}}>
+        <div className="ganttSticky ganttHeaderCell">Task</div>
+        {days.map(day => <div key={day} className={day === new Date().toISOString().slice(0,10) ? "ganttDate today" : "ganttDate"}>{day.slice(5)}</div>)}
+        {datedTasks.map(task => {
+          const start = task.planned_start || task.deadline;
+          const end = task.planned_end || task.deadline || start;
+          const colStart = dateToColumn(start, days);
+          const colEnd = Math.max(colStart + 1, dateToColumn(end, days) + 1);
+          return <React.Fragment key={task.id}>
+            <div className="ganttSticky ganttTaskLabel">
+              <strong>{task.title}</strong>
+              <span>{task.discipline || task.area} · {task.status} · {task.points || 0} SP</span>
+            </div>
+            <div
+              className={`ganttTaskBar ${String(task.discipline || task.area || "Task").replaceAll(" ","-")}`}
+              style={{gridColumn:`${colStart} / ${colEnd}`}}
+              title={`${task.title}: ${start} → ${end}`}
+            >
+              {start} → {end}
+            </div>
+          </React.Fragment>
+        })}
+      </div>
     </div>}
   </section>
 }
 
-function PmDashboard({overdueTasks,tasks,blockers,orders,activeSprint,plannedPoints,assigneesOf,nameOf,patchTask}) {
-  return <section className="grid two"><Card title="Überfällige Aufgaben">{overdueTasks.length===0&&<p className="empty">Keine überfälligen Aufgaben.</p>}<div className="taskList">{overdueTasks.map(t=><div className="itemCard dangerBorder" key={t.id}><strong>{t.title}</strong><p className="muted">{daysOverdue(t.deadline)} Tage überfällig · {t.status}</p><p>{assigneesOf(t.id).map(p=>p.display_name).join(", ") || nameOf(t.owner_id)}</p><textarea placeholder="Verzögerungsgrund" value={t.delay_reason||""} onChange={e=>patchTask(t.id,{delay_reason:e.target.value})}/></div>)}</div></Card><Card title="PM-Risiken"><ul className="checkList"><li>Überfällig: {overdueTasks.length}</li><li>Offene Blocker: {blockers.filter(b=>b.status!=="Gelöst").length}</li><li>Bestellungen offen: {orders.filter(o=>o.status!=="Angekommen").length}</li><li>Sprint-Auslastung: {plannedPoints}/{activeSprint?.capacity_points||0}</li></ul></Card></section>
-}
-
 function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
   function toggle(listName,id){const exists=form[listName].includes(id); setForm({...form,[listName]:exists?form[listName].filter(x=>x!==id):[...form[listName],id]})}
-  return <form className="form" onSubmit={submit}><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Beschreibung" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Hauptverantwortliche/r</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Weitere Verantwortliche</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/><input type="date" value={form.planned_end} onChange={e=>setForm({...form,planned_end:e.target.value})}/></div><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Abhängigkeiten</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><button className="primary"><Plus size={18}/> Aufgabe erstellen</button></form>
+  return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Main owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Weitere Ownere</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/><input type="date" value={form.planned_end} onChange={e=>setForm({...form,planned_end:e.target.value})}/></div><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Abhängigkeiten</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><button className="primary"><Plus size={18}/> Aufgabe erstellen</button></form>
 }
 
 function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,removeTaskFromSprint}) {
@@ -1223,7 +1296,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
     description: task.description || "",
     priority: task.priority || "P3",
     discipline: task.discipline || task.area || "Software",
-    work_type: task.work_type || "Organisation",
+    work_type: task.work_type || "Organization",
     deadline: task.deadline || "",
     points: task.points || 3,
     planned_start: task.planned_start || "",
@@ -1240,10 +1313,10 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
   return <div className={task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done"?"taskCard overdue":"taskCard"}>
     <div className="row clickable" onClick={()=>setOpen(!open)}><strong>{task.title}</strong><span className="badge">{task.priority} · {task.points} SP</span></div>
     {open && !editing && <>
-      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"offen"}</p>
-      <p className="muted">Verantwortlich: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p>
+      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"open"}</p>
+      <p className="muted">Owner: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p>
       <p>{task.description}</p>
-      {deps.length>0&&<p className="muted"><GitBranch size={14}/> Abhängig von: {deps.map(d=>d.title).join(", ")}</p>}
+      {deps.length>0&&<p className="muted"><GitBranch size={14}/> Depends on: {deps.map(d=>d.title).join(", ")}</p>}
       <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
       <p><b>Evidence:</b> {task.evidence || "-"}</p>
     </>}
@@ -1256,13 +1329,13 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
       <div className="formRow"><input type="date" value={draft.planned_start} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/><input type="date" value={draft.planned_end} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/></div>
       <input type="date" value={draft.deadline} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
       <textarea placeholder="Definition of Done" value={draft.done_definition} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
-      <textarea placeholder="Evidence / Review-Doku" value={draft.evidence} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
-      <div className="buttonRow"><button className="primary" type="button" onClick={saveEdit}>Speichern</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Abbrechen</button></div>
+      <textarea placeholder="Evidence / Review notes" value={draft.evidence} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
+      <div className="buttonRow"><button className="primary" type="button" onClick={saveEdit}>Save</button><button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button></div>
     </div>}
     {open && <>
-      <div className="miniSection"><h4><Paperclip size={15}/> Dateien</h4><input type="file" onChange={e=>uploadTaskFile(task.id,e.target.files?.[0])}/>{files.map(f=><a key={f.id} href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>)}</div>
-      <div className="miniSection"><h4><MessageCircle size={15}/> Kommentare</h4>{comments.map(c=><p key={c.id} className="comment"><b>{nameOf(c.profile_id)}:</b> {c.body}</p>)}<div className="formRow"><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Kommentar"/><button type="button" className="secondary" onClick={()=>addComment(task.id,comment,()=>setComment(""))}>Senden</button></div></div>
-      <div className="row"><select value={task.status} onChange={e=>moveTask(task,e.target.value)}>{sprintColumns.map(c=><option key={c}>{c}</option>)}</select><div className="buttonRow"><button className="secondary" type="button" onClick={()=>setEditing(!editing)}>Bearbeiten</button>{removeTaskFromSprint&&<button className="secondary" onClick={()=>removeTaskFromSprint(task.id)}>Zurück ins Backlog</button>}<button className="iconBtn" onClick={()=>deleteTask(task.id)}><Trash2 size={16}/></button></div></div>
+      <div className="miniSection"><h4><Paperclip size={15}/> Files</h4><input type="file" onChange={e=>uploadTaskFile(task.id,e.target.files?.[0])}/>{files.map(f=><a key={f.id} href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>)}</div>
+      <div className="miniSection"><h4><MessageCircle size={15}/> Comments</h4>{comments.map(c=><p key={c.id} className="comment"><b>{nameOf(c.profile_id)}:</b> {c.body}</p>)}<div className="formRow"><input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Comment"/><button type="button" className="secondary" onClick={()=>addComment(task.id,comment,()=>setComment(""))}>Send</button></div></div>
+      <div className="row"><select value={task.status} onChange={e=>moveTask(task,e.target.value)}>{sprintColumns.map(c=><option key={c}>{c}</option>)}</select><div className="buttonRow"><button className="secondary" type="button" onClick={()=>setEditing(!editing)}>Edit</button>{removeTaskFromSprint&&<button className="secondary" onClick={()=>removeTaskFromSprint(task.id)}>Move back to Backlog</button>}<button className="iconBtn" onClick={()=>deleteTask(task.id)}><Trash2 size={16}/></button></div></div>
     </>}
   </div>
 }
@@ -1271,7 +1344,7 @@ function FileBox({title,files,onUpload,onDelete}) {
   return <div className="miniSection">
     <h4><Paperclip size={15}/> {title}</h4>
     <input type="file" onChange={e=>onUpload(e.target.files?.[0])}/>
-    {files?.length === 0 && <p className="muted">Noch keine Dateien.</p>}
+    {files?.length === 0 && <p className="muted">Noch keine Files.</p>}
     {files?.map(f => <div className="fileRow" key={f.id}>
       <a href={f.file_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> {f.file_name}</a>
       <button className="miniDelete" type="button" onClick={()=>onDelete(f)}><Trash2 size={12}/></button>
@@ -1279,8 +1352,8 @@ function FileBox({title,files,onUpload,onDelete}) {
   </div>
 }
 
-function OrderForm({form,setForm,profiles,submit}){return <form className="form" onSubmit={submit}><input placeholder="Was muss bestellt werden?" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Beschreibung" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Lieferant / Shop" value={form.shop} onChange={e=>setForm({...form,shop:e.target.value})}/><input placeholder="Bestellnummer" value={form.order_number} onChange={e=>setForm({...form,order_number:e.target.value})}/><input placeholder="Link" value={form.supplier_link} onChange={e=>setForm({...form,supplier_link:e.target.value})}/><input placeholder="Menge" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/><input placeholder="Preis" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Verantwortlich</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><button className="primary"><Package size={18}/> Bestellung hinzufügen</button></form>}
-function ScheduleForm({form,setForm,tasks,submit}){return <form className="form" onSubmit={submit}><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select value={form.task_id} onChange={e=>setForm({...form,task_id:e.target.value})}><option value="">Ohne Aufgabe</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><textarea placeholder="Notizen" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><select value={form.visibility || "private"} onChange={e=>setForm({...form,visibility:e.target.value})}><option value="private">Eigener Termin</option><option value="group">Gruppentermin</option></select><button className="primary"><CalendarDays size={18}/> Eintragen</button></form>}
-function SprintForm({form,setForm,submit}){return <form className="form" onSubmit={submit}><input placeholder="Sprintname" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Sprintziel" value={form.goal} onChange={e=>setForm({...form,goal:e.target.value})}/><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><input type="number" placeholder="Kapazität Story Points" value={form.capacity_points} onChange={e=>setForm({...form,capacity_points:Number(e.target.value)})}/><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{["Geplant","Aktiv","Abgeschlossen"].map(s=><option key={s}>{s}</option>)}</select><button className="primary"><Rocket size={18}/> Sprint speichern</button></form>}
-function MeetingForm({form,setForm,sprints,submit}){return <form className="form" onSubmit={submit}><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value})}><option value="">Kein Sprint</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select value={form.meeting_type} onChange={e=>setForm({...form,meeting_type:e.target.value})}>{meetingTypes.map(t=><option key={t}>{t}</option>)}</select><input placeholder="Titel" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><input type="date" value={form.meeting_date} onChange={e=>setForm({...form,meeting_date:e.target.value})}/><textarea placeholder="Teilnehmer" value={form.participants} onChange={e=>setForm({...form,participants:e.target.value})}/><textarea placeholder="Entscheidungen" value={form.decisions} onChange={e=>setForm({...form,decisions:e.target.value})}/><textarea placeholder="Offene Punkte" value={form.open_points} onChange={e=>setForm({...form,open_points:e.target.value})}/><textarea placeholder="Nächste Schritte" value={form.next_steps} onChange={e=>setForm({...form,next_steps:e.target.value})}/><button className="primary"><FileText size={18}/> Protokoll speichern</button></form>}
+function OrderForm({form,setForm,profiles,submit}){return <form className="form" onSubmit={submit}><input placeholder="What needs to be ordered?" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Lieferant / Supplier / Shop" value={form.shop} onChange={e=>setForm({...form,shop:e.target.value})}/><input placeholder="Order number" value={form.order_number} onChange={e=>setForm({...form,order_number:e.target.value})}/><input placeholder="Link" value={form.supplier_link} onChange={e=>setForm({...form,supplier_link:e.target.value})}/><input placeholder="Quantity" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/><input placeholder="Preis" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><button className="primary"><Package size={18}/> Ordering hinzufügen</button></form>}
+function ScheduleForm({form,setForm,tasks,submit}){return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select value={form.task_id} onChange={e=>setForm({...form,task_id:e.target.value})}><option value="">Ohne Aufgabe</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><textarea placeholder="Notes" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><select value={form.visibility || "private"} onChange={e=>setForm({...form,visibility:e.target.value})}><option value="private">Private Appointment</option><option value="group">Group Appointment</option></select><button className="primary"><CalendarDays size={18}/> Add</button></form>}
+function SprintForm({form,setForm,submit}){return <form className="form" onSubmit={submit}><input placeholder="Sprintname" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Sprint Goal" value={form.goal} onChange={e=>setForm({...form,goal:e.target.value})}/><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><input type="number" placeholder="Kapazität Story Points" value={form.capacity_points} onChange={e=>setForm({...form,capacity_points:Number(e.target.value)})}/><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{["Planned","Active","Completed"].map(s=><option key={s}>{s}</option>)}</select><button className="primary"><Rocket size={18}/> Sprint speichern</button></form>}
+function MeetingForm({form,setForm,sprints,submit}){return <form className="form" onSubmit={submit}><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value})}><option value="">Kein Sprint</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select value={form.meeting_type} onChange={e=>setForm({...form,meeting_type:e.target.value})}>{meetingTypes.map(t=><option key={t}>{t}</option>)}</select><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><input type="date" value={form.meeting_date} onChange={e=>setForm({...form,meeting_date:e.target.value})}/><textarea placeholder="Partnehmer" value={form.participants} onChange={e=>setForm({...form,participants:e.target.value})}/><textarea placeholder="Decisions" value={form.decisions} onChange={e=>setForm({...form,decisions:e.target.value})}/><textarea placeholder="Opene Punkte" value={form.open_points} onChange={e=>setForm({...form,open_points:e.target.value})}/><textarea placeholder="Next Steps" value={form.next_steps} onChange={e=>setForm({...form,next_steps:e.target.value})}/><button className="primary"><FileText size={18}/> Protokoll speichern</button></form>}
 createRoot(document.getElementById("root")).render(<App />);

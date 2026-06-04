@@ -364,3 +364,116 @@
 .realGanttBar.Dokumentation { background: #f3e8ff; }
 .realGanttBar.Project-Management { background: #e5e7eb; }
 .userBox input, .userBox select { width: 100%; }
+
+
+/* Final ADMM cleanup: English UI, colored appointments, better overdue and Gantt */
+.statButton {
+  all: unset;
+  cursor: pointer;
+  display: block;
+}
+
+.statButton .stat {
+  height: 100%;
+}
+
+.calendarPill.privateAppointment,
+.legendChip.privateAppointment {
+  background: #fce7f3;
+  border-color: #f9a8d4;
+}
+
+.calendarPill.groupAppointment,
+.legendChip.groupAppointment {
+  background: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.legendChip.sprint {
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+}
+
+.ganttScroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.ganttTimeline {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  min-width: max-content;
+  align-items: center;
+}
+
+.ganttHeaderCell,
+.ganttDate {
+  font-size: 12px;
+  font-weight: 900;
+  color: #374151;
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 8px;
+  text-align: center;
+}
+
+.ganttDate.today {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.ganttSticky {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: white;
+  border-radius: 12px;
+}
+
+.ganttTaskLabel {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.ganttTaskLabel span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.ganttTaskBar {
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.ganttTaskBar.Software { background: #dbeafe; }
+.ganttTaskBar.Electronics { background: #fef3c7; }
+.ganttTaskBar.Mechanics { background: #dcfce7; }
+.ganttTaskBar.Systems-Engineering { background: #ede9fe; }
+.ganttTaskBar.Testing { background: #ffedd5; }
+.ganttTaskBar.Manufacturing { background: #e0f2fe; }
+.ganttTaskBar.Documentation { background: #f3e8ff; }
+.ganttTaskBar.Project-Management { background: #e5e7eb; }
+
+.compactTask .row.clickable,
+.taskCard .row.clickable {
+  padding: 4px 0;
+}
+
+.dangerBorder {
+  border: 2px solid #fecaca !important;
+}
