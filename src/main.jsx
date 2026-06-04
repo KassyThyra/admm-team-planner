@@ -1351,9 +1351,11 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
   </div>
 }
 
-function Gantt({tasks}) {
+function Gantt({tasks,sprints=[]}) {
   const weeks = buildGanttWeeks();
   const months = buildGanttMonths(weeks);
+
+  const sprintNameById = (id) => sprints.find(s => s.id === id)?.name || "Unknown Sprint";
 
   const datedTasks = [...tasks]
     .filter(t => t.planned_start || t.planned_end || t.deadline)
@@ -1366,7 +1368,7 @@ function Gantt({tasks}) {
   const rows = [];
   let lastSprint = null;
   datedTasks.forEach(task => {
-    const group = task.sprint_id ? `Sprint ${String(task.sprint_id).slice(0, 8)}` : "Backlog / No Sprint";
+    const group = task.sprint_id ? sprintNameById(task.sprint_id) : "Backlog / No Sprint";
     if (group !== lastSprint) {
       rows.push({type:"group", id:`group-${group}`, title:group});
       lastSprint = group;
@@ -1380,7 +1382,7 @@ function Gantt({tasks}) {
 
     {datedTasks.length > 0 && <div className="ganttPlannerScroll">
       <div className="ganttPlanner" style={{gridTemplateColumns:`280px repeat(${weeks.length}, 92px)`}}>
-        <div className="ganttPlannerTaskHead">Task Name</div>
+        <div className="ganttPlannerTaskHead">Taskname</div>
         {months.map(month => <div key={month.label} className="ganttPlannerMonth" style={{gridColumn:`${month.start + 2} / ${month.end + 3}`, gridRow: 1}}>{month.label}</div>)}
         <div className="ganttPlannerSubHead" style={{gridColumn: 1, gridRow: 2}}></div>
         {weeks.map((w,index) => <div key={w.key} className="ganttPlannerWeek" style={{gridColumn: index + 2, gridRow: 2}}>{w.week}W</div>)}
