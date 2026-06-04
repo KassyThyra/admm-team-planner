@@ -852,3 +852,214 @@
   border: 2px solid #fb923c;
   z-index: 3;
 }
+
+
+/* Group appointments appear in both My Calendar and Team Calendar */
+.calendarPill.groupAppointment,
+.legendChip.groupAppointment {
+  background: #ffedd5 !important;
+  border-color: #fb923c !important;
+}
+
+/* Gantt final fix: sprint group rows and title-only task column */
+.ganttSprintGroup {
+  position: sticky;
+  left: 0;
+  z-index: 8;
+  background: #e5e7eb;
+  color: #111827;
+  font-weight: 900;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
+}
+
+.ganttSprintGroupCell {
+  min-height: 38px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.ganttPlannerTask strong {
+  font-size: 13px;
+}
+
+.ganttPlannerTask span {
+  display: none;
+}
+
+/* Banner title should read clearly */
+.levelCard h2 {
+  font-size: 30px;
+}
+
+
+/* Error-fixed Gantt and manual milestone final overrides */
+.ganttPlannerScroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #d1d5db;
+  border-radius: 18px;
+  background: white;
+}
+.ganttPlanner {
+  display: grid;
+  min-width: max-content;
+  position: relative;
+}
+.ganttPlannerTaskHead,
+.ganttPlannerSubHead {
+  position: sticky;
+  left: 0;
+  z-index: 8;
+  background: #3f9489;
+  color: white;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  border: 1px solid #a7c7c1;
+}
+.ganttPlannerTaskHead {
+  grid-row: 1 / span 2;
+  min-height: 76px;
+  font-size: 17px;
+}
+.ganttPlannerMonth,
+.ganttPlannerWeek {
+  background: #3f9489;
+  color: white;
+  border: 1px solid #a7c7c1;
+  padding: 9px;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+.ganttPlannerWeek { font-size: 11px; }
+.ganttSprintGroup {
+  position: sticky;
+  left: 0;
+  z-index: 8;
+  background: #e5e7eb;
+  color: #111827;
+  font-weight: 900;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
+}
+.ganttSprintGroupCell {
+  min-height: 38px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+.ganttPlannerTask {
+  position: sticky;
+  left: 0;
+  z-index: 7;
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid #c7d2d0;
+  background: #dcfce7;
+}
+.ganttPlannerTask.odd { background: #fef9c3; }
+.ganttPlannerTask strong { font-size: 13px; }
+.ganttPlannerCell {
+  min-height: 74px;
+  border: 1px solid #c7d2d0;
+  background: #dcfce7;
+}
+.ganttPlannerCell.odd { background: #fef9c3; }
+.ganttPlannerBar {
+  z-index: 9;
+  align-self: center;
+  height: 28px;
+  margin: 0 7px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 900;
+  overflow: hidden;
+  white-space: nowrap;
+  color: #111827;
+  box-shadow: 0 2px 6px rgba(15,23,42,.14);
+}
+.ganttPlannerBar.Software { background: #5bbf67; }
+.ganttPlannerBar.Electronics { background: #f7c544; }
+.ganttPlannerBar.Mechanics { background: #60a5fa; }
+.ganttPlannerBar.Systems-Engineering { background: #a78bfa; }
+.ganttPlannerBar.Testing { background: #fb923c; }
+.ganttPlannerBar.Manufacturing { background: #2dd4bf; }
+.ganttPlannerBar.Documentation { background: #f0abfc; }
+.ganttPlannerBar.Project-Management { background: #d1d5db; }
+.manualMilestoneTimeline {
+  position: relative;
+  display: flex;
+  gap: 90px;
+  overflow-x: auto;
+  padding: 86px 26px 54px;
+  margin: 20px 0;
+  border-radius: 22px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  min-height: 260px;
+}
+.manualMilestoneTimeline::after {
+  content: "";
+  position: absolute;
+  left: 26px;
+  right: 26px;
+  bottom: 58px;
+  height: 5px;
+  background: #111827;
+  border-radius: 999px;
+}
+.manualMilestoneNode {
+  position: relative;
+  min-width: 210px;
+  display: grid;
+  justify-items: center;
+  z-index: 2;
+}
+.manualMilestoneCard {
+  width: 210px;
+  min-height: 108px;
+  border-radius: 10px;
+  border-top: 4px solid #fb923c;
+  background: #fef3c7;
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+  box-shadow: 0 10px 24px rgba(15,23,42,.08);
+}
+.manualMilestoneCard span { font-size: 13px; color: #111827; }
+.manualMilestoneCard small { color: #6b7280; font-size: 11px; }
+.manualMilestoneStem {
+  position: absolute;
+  top: 108px;
+  bottom: 14px;
+  width: 1px;
+  background: #111827;
+}
+.manualMilestoneDot {
+  position: absolute;
+  bottom: -5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: white;
+  border: 2px solid #fb923c;
+  z-index: 3;
+}
+.calendarPill.groupAppointment,
+.legendChip.groupAppointment {
+  background: #ffedd5 !important;
+  border-color: #fb923c !important;
+}
+.levelCard h2 { font-size: 30px; }
