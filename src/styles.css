@@ -1090,15 +1090,17 @@
   color: transparent !important;
 }
 
-.ganttPlannerBar.sprint-tone-0 { background: #94a3b8 !important; }
-.ganttPlannerBar.sprint-tone-1 { background: #22c55e !important; }
-.ganttPlannerBar.sprint-tone-2 { background: #f59e0b !important; }
-.ganttPlannerBar.sprint-tone-3 { background: #3b82f6 !important; }
-.ganttPlannerBar.sprint-tone-4 { background: #a855f7 !important; }
-.ganttPlannerBar.sprint-tone-5 { background: #ef4444 !important; }
-.ganttPlannerBar.sprint-tone-6 { background: #14b8a6 !important; }
-.ganttPlannerBar.sprint-tone-7 { background: #ec4899 !important; }
-.ganttPlannerBar.sprint-tone-8 { background: #6366f1 !important; }
+.ganttPlannerBar.sprint-tone-0,
+.ganttPlannerBar.sprint-tone-1,
+.ganttPlannerBar.sprint-tone-2,
+.ganttPlannerBar.sprint-tone-3,
+.ganttPlannerBar.sprint-tone-4,
+.ganttPlannerBar.sprint-tone-5,
+.ganttPlannerBar.sprint-tone-6,
+.ganttPlannerBar.sprint-tone-7,
+.ganttPlannerBar.sprint-tone-8 {
+    background: #2563eb !important;
+}
 
 /* Milestones: horizontal line through the center of the cards */
 .manualMilestoneTimeline {
