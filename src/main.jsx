@@ -732,21 +732,13 @@ function dateToColumn(date, days) {
 function buildBurndownData(sprint, tasks) {
   const sprintTasks = tasks.filter(t => t.sprint_id === sprint.id);
   const total = sprintTasks.reduce((sum,t)=>sum+Number(t.points||0),0);
+  const done = sprintTasks.filter(t => isDoneStatus(t.status)).reduce((sum,t)=>sum+Number(t.points||0),0);
   const dates = daysBetweenDates(sprint.start_date, sprint.end_date);
-  const sprintDays = dates.length ? dates : Array.from({length: Math.max(1, Number(sprint.duration_days || 1))}, (_, i) => `Day ${i + 1}`);
-  const donePoints = sprintTasks
-    .filter(t => isDoneStatus(t.status))
-    .reduce((sum,t)=>sum+Number(t.points||0),0);
-
-  return sprintDays.map((date, index) => {
-    const progress = sprintDays.length === 1 ? 1 : index / (sprintDays.length - 1);
-    const estimatedDone = Math.round(donePoints * progress);
-    return {
-      date,
-      day: index + 1,
-      total,
-      remaining: Math.max(0, total - estimatedDone)
-    };
+  if (!dates.length) return [{date:"Today", remaining: Math.max(0,total-done)}];
+  return dates.map((date, index) => {
+    const progress = dates.length === 1 ? 1 : index / (dates.length - 1);
+    const estimatedDone = Math.round(done * progress);
+    return {date, remaining: Math.max(0, total - estimatedDone)};
   });
 }
 function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() - new Date(dateString)) / (1000*60*60*24))); }
@@ -982,46 +974,30 @@ function SprintBoard({sprints,activeSprint,setSelectedSprintId,tasks,allTasks=[]
   </section>
 }
 function BurndownChart({sprint,tasks}) {
-  const sprintTasks = tasks.filter(t => t.sprint_id === sprint.id);
-  const maxPoints = Math.max(1, sprintTasks.reduce((sum,t)=>sum+Number(t.points||0),0));
-  const dates = daysBetweenDates(sprint.start_date, sprint.end_date);
-  const dayCount = Math.max(1, dates.length || Number(sprint.duration_days || 1));
   const data = buildBurndownData(sprint, tasks);
-  const chart = { left: 42, right: 600, top: 18, bottom: 148 };
-  const width = chart.right - chart.left;
-  const height = chart.bottom - chart.top;
-  const xForDay = day => dayCount === 1 ? chart.left : chart.left + ((day - 1) / (dayCount - 1)) * width;
-  const yForPoints = points => chart.bottom - (Math.max(0, Math.min(maxPoints, Number(points || 0))) / maxPoints) * height;
-  const remainingByDay = Array.from({ length: dayCount }, (_, i) => {
-    const item = data[i] || data[data.length - 1] || { remaining: maxPoints };
-    return { day: i + 1, remaining: Math.max(0, Math.min(maxPoints, Number(item.remaining ?? maxPoints))) };
-  });
-  const linePoints = remainingByDay.map(item => `${xForDay(item.day)},${yForPoints(item.remaining)}`).join(" ");
-  const yStep = maxPoints <= 10 ? 1 : Math.ceil(maxPoints / 5);
-  const yTicks = Array.from({ length: Math.floor(maxPoints / yStep) + 1 }, (_, i) => i * yStep).filter(v => v <= maxPoints);
-  if (!yTicks.includes(maxPoints)) yTicks.push(maxPoints);
-  const xTicks = Array.from({ length: dayCount }, (_, i) => i + 1);
-  const xLabelEvery = dayCount <= 10 ? 1 : Math.ceil(dayCount / 10);
-  const tickText = { fontSize: 5, fill: "#374151", fontWeight: 700 };
-  const axisText = { fontSize: 6, fill: "#6b7280", fontWeight: 800 };
-
-  return <section className="card miniBurn compactBurndown">
-    <div className="row"><h2>Burndown Chart</h2><span className="muted">Y: Story Points 0–{maxPoints} · X: Sprint days 1–{dayCount}</span></div>
-    <svg className="burndownSvg burndownFinal" viewBox="0 0 620 170" role="img" aria-label={`Burndown chart. Y axis story points from 0 to ${maxPoints}. X axis sprint days from 1 to ${dayCount}.`}>
-      <line x1={chart.left} y1={chart.top} x2={chart.left} y2={chart.bottom} stroke="#111827" strokeWidth="0.7"/>
-      <line x1={chart.left} y1={chart.bottom} x2={chart.right} y2={chart.bottom} stroke="#111827" strokeWidth="0.7"/>
-      {yTicks.map(value => <g key={`y-${value}`}>
-        <line x1={chart.left} y1={yForPoints(value)} x2={chart.right} y2={yForPoints(value)} stroke="#e5e7eb" strokeWidth="0.45"/>
-        <text x={chart.left - 6} y={yForPoints(value) + 1.8} style={tickText} textAnchor="end">{value}</text>
-      </g>)}
-      {xTicks.map(day => (day === 1 || day === dayCount || day % xLabelEvery === 0) && <g key={`x-${day}`}>
-        <line x1={xForDay(day)} y1={chart.bottom} x2={xForDay(day)} y2={chart.bottom + 2.5} stroke="#111827" strokeWidth="0.45"/>
-        <text x={xForDay(day)} y={chart.bottom + 9} style={tickText} textAnchor="middle">{day}</text>
-      </g>)}
-      <polyline points={linePoints} fill="none" stroke="#111827" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-      <text x={(chart.left + chart.right) / 2} y="166" style={axisText} textAnchor="middle">Days</text>
-      <text x="11" y={(chart.top + chart.bottom) / 2} style={axisText} textAnchor="middle" transform={`rotate(-90 11 ${(chart.top + chart.bottom) / 2})`}>Story Points</text>
+  const sprintTotal = tasks.filter(t => t.sprint_id === sprint.id).reduce((sum,t)=>sum+Number(t.points||0),0);
+  const max = Math.max(1, sprintTotal, ...data.map(d=>Number(d.remaining || 0)));
+  const chartLeft = 14;
+  const chartRight = 96;
+  const chartTop = 8;
+  const chartBottom = 86;
+  const points = data.map((d,i)=>{
+    const x = data.length === 1 ? chartLeft : chartLeft + (i/(data.length-1))*(chartRight-chartLeft);
+    const y = chartBottom - (Number(d.remaining || 0)/max)*(chartBottom-chartTop);
+    return `${x},${y}`;
+  }).join(" ");
+  const dayLabels = data.map((d,i)=>({ label: `Day ${i+1}`, x: data.length === 1 ? chartLeft : chartLeft + (i/(data.length-1))*(chartRight-chartLeft) }));
+  return <section className="card miniBurn">
+    <div className="row"><h2>Burndown Chart</h2><span className="muted">Y-axis: sprint story points · X-axis: days</span></div>
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Burndown chart with story points on the y-axis and sprint days on the x-axis">
+      <line x1={chartLeft} y1={chartTop} x2={chartLeft} y2={chartBottom} stroke="currentColor" strokeWidth="0.8"/>
+      <line x1={chartLeft} y1={chartBottom} x2={chartRight} y2={chartBottom} stroke="currentColor" strokeWidth="0.8"/>
+      <text x="1" y={chartTop + 4} className="chartAxisText">{max} SP</text>
+      <text x="2" y={chartBottom} className="chartAxisText">0 SP</text>
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3"/>
+      {dayLabels.map((d,i)=><text key={i} x={d.x - 3} y="97" className="chartAxisText">{i === 0 || i === dayLabels.length - 1 ? d.label : ""}</text>)}
     </svg>
+    <div className="chartLabels"><span>{data[0]?.date}</span><span>{data.length} days</span><span>{data[data.length-1]?.date}</span></div>
   </section>
 }
 
@@ -1654,8 +1630,6 @@ function Milestones({sprints,milestones,form,setForm,addMilestone,patchMilestone
 function EditableMilestone({milestone,index,isLast,patchMilestone,deleteMilestone}) {
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...milestone});
-  const statusClass = milestoneStatusClass(milestone.status);
-  const colors = milestoneStatusColors(milestone.status);
 
   async function save() {
     await patchMilestone(milestone.id,{
@@ -1668,17 +1642,17 @@ function EditableMilestone({milestone,index,isLast,patchMilestone,deleteMileston
     setEditing(false);
   }
 
-  return <div className={`manualMilestoneNode ${statusClass}`} data-status={statusClass}>
-    {!editing ? <div className="manualMilestoneCard" style={{background: colors.background, border: `2px solid ${colors.border}`, borderTop: `6px solid ${colors.border}`}}>
+  return <div className={`manualMilestoneNode ${milestoneStatusClass(milestone.status)}`}>
+    {!editing ? <div className="manualMilestoneCard">
       <strong>#{milestone.order_index || index} {milestone.title}</strong>
       <span>{milestone.target_date || "No date"}</span>
-      <small className={`milestoneStatusBadge ${statusClass}`} style={{background: colors.border, color: "white"}}>{milestone.status}</small>
+      <small>{milestone.status}</small>
       <p>{milestone.description}</p>
       <div className="buttonRow">
         <button className="secondary" onClick={()=>setEditing(true)}>Edit</button>
         <button className="iconBtn" onClick={()=>deleteMilestone(milestone.id)}><Trash2 size={14}/></button>
       </div>
-    </div> : <div className="manualMilestoneCard form" style={{background: colors.background, border: `2px solid ${colors.border}`, borderTop: `6px solid ${colors.border}`}}>
+    </div> : <div className="manualMilestoneCard form">
       <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
       <input type="date" value={draft.target_date || ""} onChange={e=>setDraft({...draft,target_date:e.target.value})}/>
       <select value={draft.order_index || index} onChange={e=>setDraft({...draft,order_index:Number(e.target.value)})}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select>
@@ -1689,25 +1663,16 @@ function EditableMilestone({milestone,index,isLast,patchMilestone,deleteMileston
         <button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button>
       </div>
     </div>}
-    <div className="manualMilestoneStem" style={{background: colors.border}}></div>
-    {statusClass === "milestoneActive" && <div className="workerIcon" title="Active milestone">👷</div>}
+    <div className="manualMilestoneStem"></div>
+    {milestone.status === "Active" && <div className="workerIcon" title="Active milestone">👷</div>}
     {isLast && <div className="finishFlag" title="Final milestone">🚩</div>}
-    <div className="manualMilestoneDot" style={{background: colors.background, border: `4px solid ${colors.border}`}}></div>
+    <div className="manualMilestoneDot"></div>
   </div>
 }
 
-
-function milestoneStatusColors(status) {
-  const statusClass = milestoneStatusClass(status);
-  if (statusClass === "milestoneDone") return { background: "#dcfce7", border: "#16a34a" };
-  if (statusClass === "milestoneActive") return { background: "#ffedd5", border: "#f97316" };
-  return { background: "#fee2e2", border: "#dc2626" };
-}
-
 function milestoneStatusClass(status) {
-  const normalized = String(status || "Planned").trim().toLowerCase();
-  if (normalized === "done" || normalized === "completed" || normalized === "erledigt" || normalized === "abgeschlossen") return "milestoneDone";
-  if (normalized === "active" || normalized === "aktiv") return "milestoneActive";
+  if (status === "Done") return "milestoneDone";
+  if (status === "Active") return "milestoneActive";
   return "milestonePlanned";
 }
 
