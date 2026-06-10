@@ -57,6 +57,7 @@ function roleToIsPm(role) { return role === "Project Manager"; }
 const workTypes = ["Organization", "Ordering", "Testing", "Manufacturing / Build", "Research", "Documentation", "Integration", "Meeting / Alignment", "Troubleshooting", "Design / Construction", "Review / Approval"];
 const orderStatus = ["Needed", "Ordered", "Shipped", "Arrived"];
 const meetingTypes = ["Sprint Planning", "Weekly", "Sprint Review", "Retrospective", "Extra Meeting"];
+const riskStatusOptions = ["Critical", "Future", "Resolved"];
 const levelRules = [
   { level: 1, title: "Project started", needed: 0 },
   { level: 2, title: "Team organized", needed: 2 },
@@ -85,6 +86,7 @@ function App() {
   const [milestones, setMilestones] = useState([]);
   const [infoItems, setInfoItems] = useState([]);
   const [feedbackItems, setFeedbackItems] = useState([]);
+  const [risks, setRisks] = useState([]);
   const [genericFiles, setGenericFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(() => localStorage.getItem("admm-active-tab") || "dashboard");
@@ -99,11 +101,18 @@ function App() {
   const [milestoneForm, setMilestoneForm] = useState(emptyMilestone());
   const [infoForm, setInfoForm] = useState(emptyInfoItem());
   const [feedbackForm, setFeedbackForm] = useState(emptyFeedbackItem());
-  const [selectedSprintId, setSelectedSprintId] = useState("");
+  const [riskForm, setRiskForm] = useState(emptyRisk());
+  const [selectedSprintId, setSelectedSprintIdState] = useState(() => localStorage.getItem("admm-selected-sprint") || "");
   const [message, setMessage] = useState("");
   const [celebration, setCelebration] = useState(false);
 
   const isConfigured = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.includes("YOUR-PROJECT"));
+
+  function setSelectedSprintId(nextId) {
+    setSelectedSprintIdState(nextId);
+    if (nextId) localStorage.setItem("admm-selected-sprint", nextId);
+    else localStorage.removeItem("admm-selected-sprint");
+  }
 
   useEffect(() => {
     if (!isConfigured) { setLoading(false); return; }
@@ -131,7 +140,7 @@ function App() {
 
   async function loadAll() {
     if (!session?.user) return;
-    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes, genericFilesRes, milestonesRes, infoItemsRes, feedbackItemsRes] = await Promise.all([
+    const [profileRes, profilesRes, tasksRes, sprintsRes, assigneesRes, depsRes, commentsRes, filesRes, ordersRes, blockersRes, scheduleRes, meetingsRes, notificationsRes, genericFilesRes, milestonesRes, infoItemsRes, feedbackItemsRes, risksRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
       supabase.from("profiles").select("*").order("created_at", { ascending: true }),
       supabase.from("tasks").select("*").order("priority", { ascending: true }).order("created_at", { ascending: false }),
@@ -149,6 +158,7 @@ function App() {
       supabase.from("milestones").select("*").order("order_index", { ascending: true }),
       supabase.from("info_items").select("*").order("created_at", { ascending: false }),
       supabase.from("feedback_items").select("*").order("created_at", { ascending: false }),
+      supabase.from("risks").select("*").order("created_at", { ascending: false }),
     ]);
     if (!profileRes.data) {
       const fallbackName = session.user.email?.split("@")[0] || "Team member";
@@ -168,9 +178,14 @@ function App() {
     setProfiles(profilesRes.data || []); setTasks(tasksRes.data || []); setSprints(sprintsRes.data || []);
     setAssignees(assigneesRes.data || []); setDependencies(depsRes.data || []); setComments(commentsRes.data || []);
     setFiles(filesRes.data || []); setOrders(ordersRes.data || []); setBlockers(blockersRes.data || []);
-    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []); setMilestones(milestonesRes.data || []); setInfoItems(infoItemsRes.data || []); setFeedbackItems(feedbackItemsRes.data || []);
-    if (!selectedSprintId) {
-      const active = (sprintsRes.data || []).find(s => s.status === "Active") || (sprintsRes.data || [])[0];
+    setSchedule(scheduleRes.data || []); setMeetings(meetingsRes.data || []); setNotifications(notificationsRes.data || []); setGenericFiles(genericFilesRes.data || []); setMilestones(milestonesRes.data || []); setInfoItems(infoItemsRes.data || []); setFeedbackItems(feedbackItemsRes.data || []); setRisks(risksRes.data || []);
+    const savedSprintId = localStorage.getItem("admm-selected-sprint");
+    const sprintList = sprintsRes.data || [];
+    const savedSprintExists = savedSprintId && sprintList.some(s => s.id === savedSprintId);
+    if (savedSprintExists && selectedSprintId !== savedSprintId) {
+      setSelectedSprintIdState(savedSprintId);
+    } else if (!selectedSprintId && !savedSprintId) {
+      const active = sprintList.find(s => s.status === "Active") || sprintList[0];
       if (active) setSelectedSprintId(active.id);
     }
   }
@@ -310,7 +325,13 @@ function App() {
     const check = canMoveTask(task, newStatus, profile, assigneesOf(task.id), depsOf(task.id));
     if (!check.ok) { alert(check.message); return; }
     const wasDone = isDoneStatus(task.status);
-    await patchTask(task.id, { status: newStatus, backlog_status: newStatus === "Done" ? "Done" : "In Sprint" });
+    const nextPatch = {
+      status: newStatus,
+      backlog_status: newStatus === "Done" ? "Done" : "In Sprint"
+    };
+    if (newStatus === "Done" && !wasDone) nextPatch.done_at = new Date().toISOString();
+    if (newStatus !== "Done" && wasDone) nextPatch.done_at = null;
+    await patchTask(task.id, nextPatch);
     if (newStatus === "Done" && !wasDone) {
       setCelebration(true);
       setTimeout(() => setCelebration(false), 1800);
@@ -555,6 +576,35 @@ function App() {
     if (error) alert(error.message);
     else await loadAll();
   }
+  async function addRisk(e) {
+    e.preventDefault();
+    if (!riskForm.title.trim()) return;
+    const { error } = await supabase.from("risks").insert({
+      title: riskForm.title,
+      description: riskForm.description || "",
+      mitigation: riskForm.mitigation || "",
+      department: riskForm.department || "Project Management",
+      status: riskForm.status || "Future",
+      created_by: profile?.id
+    });
+    if (error) alert(error.message);
+    else {
+      setRiskForm(emptyRisk());
+      await loadAll();
+    }
+  }
+  async function patchRisk(id, patch) {
+    const { error } = await supabase.from("risks").update(patch).eq("id", id);
+    if (error) alert(error.message);
+    else await loadAll();
+  }
+  async function deleteRisk(id) {
+    if (!confirm("Delete this risk?")) return;
+    const { error } = await supabase.from("risks").delete().eq("id", id);
+    if (error) alert(error.message);
+    else await loadAll();
+  }
+
   async function notifyMany(profileIds, title, body) {
     const rows = profileIds.filter(Boolean).map(profile_id => ({ profile_id, title, body }));
     if (rows.length) await supabase.from("notifications").insert(rows);
@@ -611,7 +661,7 @@ function App() {
       </section>
 
       <nav className="tabs">
-        {["dashboard","backlog","sprint","history","me","calendar","orders","blockers","meetings","gantt","milestones","info","feedback"].map(id => (
+        {["dashboard","backlog","sprint","history","me","calendar","orders","blockers","meetings","gantt","milestones","info","feedback","risks"].map(id => (
           <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
             {id === "area" ? `${displayArea(profile?.area)} Overview` : labelForTab(id)}
           </button>
@@ -633,13 +683,14 @@ function App() {
       {tab === "milestones" && <Milestones sprints={sprints} milestones={milestones} form={milestoneForm} setForm={setMilestoneForm} addMilestone={addMilestone} patchMilestone={patchMilestone} deleteMilestone={deleteMilestone} />}
       {tab === "info" && <InfoBoard items={infoItems} form={infoForm} setForm={setInfoForm} addInfoItem={addInfoItem} patchInfoItem={patchInfoItem} deleteInfoItem={deleteInfoItem} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "feedback" && <FeedbackBoard items={feedbackItems} form={feedbackForm} setForm={setFeedbackForm} addFeedbackItem={addFeedbackItem} patchFeedbackItem={patchFeedbackItem} deleteFeedbackItem={deleteFeedbackItem} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
+      {tab === "risks" && <RisksBoard risks={risks} form={riskForm} setForm={setRiskForm} addRisk={addRisk} patchRisk={patchRisk} deleteRisk={deleteRisk} nameOf={nameOf} />}
       {celebration && <DoneFireworks />}
     </main>
   );
 }
 
 function labelForTab(id) {
-  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Current Sprint", history:"Sprint History", me:"My Area", orders:"Orders", blockers:"Questions & Blockers", calendar:"Team Calendar", meetings:"Sprints & Meetings", gantt:"Gantt", milestones:"Milestones", info:"Info Board", feedback:"Feedback"})[id];
+  return ({dashboard:"Dashboard", backlog:"Backlog", sprint:"Current Sprint", history:"Sprint History", me:"My Area", orders:"Orders", blockers:"Questions & Blockers", calendar:"Team Calendar", meetings:"Sprints & Meetings", gantt:"Gantt", milestones:"Milestones", info:"Info Board", feedback:"Feedback", risks:"Risks"})[id];
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function taskEndDate(task) {
@@ -729,16 +780,29 @@ function dateToColumn(date, days) {
   const index = days.indexOf(date);
   return index >= 0 ? index + 2 : 2;
 }
+function taskDoneDateKey(task) {
+  const raw = task.done_at || task.completed_at || task.updated_at || task.created_at;
+  return raw ? String(raw).slice(0, 10) : null;
+}
 function buildBurndownData(sprint, tasks) {
+  if (!sprint) return [];
   const sprintTasks = tasks.filter(t => t.sprint_id === sprint.id);
   const total = sprintTasks.reduce((sum,t)=>sum+Number(t.points||0),0);
-  const done = sprintTasks.filter(t => isDoneStatus(t.status)).reduce((sum,t)=>sum+Number(t.points||0),0);
   const dates = daysBetweenDates(sprint.start_date, sprint.end_date);
-  if (!dates.length) return [{date:"Today", remaining: Math.max(0,total-done)}];
-  return dates.map((date, index) => {
-    const progress = dates.length === 1 ? 1 : index / (dates.length - 1);
-    const estimatedDone = Math.round(done * progress);
-    return {date, remaining: Math.max(0, total - estimatedDone)};
+  const sprintDays = dates.length ? dates : [new Date().toISOString().slice(0,10)];
+  let remaining = total;
+  return sprintDays.map((date, index) => {
+    const doneToday = sprintTasks
+      .filter(t => isDoneStatus(t.status) && taskDoneDateKey(t) === date)
+      .reduce((sum,t)=>sum+Number(t.points||0),0);
+    remaining = Math.max(0, remaining - doneToday);
+    return {
+      date,
+      day: index + 1,
+      total,
+      doneToday,
+      remaining
+    };
   });
 }
 function daysOverdue(dateString) { return Math.max(0, Math.ceil((startOfToday() - new Date(dateString)) / (1000*60*60*24))); }
@@ -762,6 +826,7 @@ function emptyMeeting(){return{sprint_id:"",meeting_type:"Weekly",title:"",meeti
 function emptyMilestone(){return{title:"",target_date:new Date().toISOString().slice(0,10),description:"",status:"Planned",order_index:1}}
 function emptyInfoItem(){return{title:"",description:"",link_url:""}}
 function emptyFeedbackItem(){return{title:"",description:""}}
+function emptyRisk(){return{title:"",description:"",mitigation:"",department:"Project Management",status:"Future"}}
 function Stat({icon,label,value,danger}){return <div className={danger?"stat dangerStat":"stat"}><div className="statIcon">{icon}</div><div><strong>{value}</strong><span>{label}</span></div></div>}
 function Card({title,children}){return <section className="card"><h2>{title}</h2>{children}</section>}
 
@@ -974,30 +1039,67 @@ function SprintBoard({sprints,activeSprint,setSelectedSprintId,tasks,allTasks=[]
   </section>
 }
 function BurndownChart({sprint,tasks}) {
+  const sprintTasks = tasks.filter(t => t.sprint_id === sprint.id);
+  const maxPoints = Math.max(0, sprintTasks.reduce((sum,t)=>sum+Number(t.points||0),0));
   const data = buildBurndownData(sprint, tasks);
-  const sprintTotal = tasks.filter(t => t.sprint_id === sprint.id).reduce((sum,t)=>sum+Number(t.points||0),0);
-  const max = Math.max(1, sprintTotal, ...data.map(d=>Number(d.remaining || 0)));
-  const chartLeft = 14;
-  const chartRight = 96;
-  const chartTop = 8;
-  const chartBottom = 86;
-  const points = data.map((d,i)=>{
-    const x = data.length === 1 ? chartLeft : chartLeft + (i/(data.length-1))*(chartRight-chartLeft);
-    const y = chartBottom - (Number(d.remaining || 0)/max)*(chartBottom-chartTop);
-    return `${x},${y}`;
-  }).join(" ");
-  const dayLabels = data.map((d,i)=>({ label: `Day ${i+1}`, x: data.length === 1 ? chartLeft : chartLeft + (i/(data.length-1))*(chartRight-chartLeft) }));
-  return <section className="card miniBurn">
-    <div className="row"><h2>Burndown Chart</h2><span className="muted">Y-axis: sprint story points · X-axis: days</span></div>
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Burndown chart with story points on the y-axis and sprint days on the x-axis">
-      <line x1={chartLeft} y1={chartTop} x2={chartLeft} y2={chartBottom} stroke="currentColor" strokeWidth="0.8"/>
-      <line x1={chartLeft} y1={chartBottom} x2={chartRight} y2={chartBottom} stroke="currentColor" strokeWidth="0.8"/>
-      <text x="1" y={chartTop + 4} className="chartAxisText">{max} SP</text>
-      <text x="2" y={chartBottom} className="chartAxisText">0 SP</text>
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3"/>
-      {dayLabels.map((d,i)=><text key={i} x={d.x - 3} y="97" className="chartAxisText">{i === 0 || i === dayLabels.length - 1 ? d.label : ""}</text>)}
-    </svg>
-    <div className="chartLabels"><span>{data[0]?.date}</span><span>{data.length} days</span><span>{data[data.length-1]?.date}</span></div>
+  const dayCount = Math.max(1, data.length);
+  const chart = { left: 72, right: 1120, top: 34, bottom: 360 };
+  const width = chart.right - chart.left;
+  const height = chart.bottom - chart.top;
+  const yMax = Math.max(1, maxPoints);
+  const xForDay = day => dayCount === 1 ? chart.left : chart.left + ((day - 1) / (dayCount - 1)) * width;
+  const yForPoints = points => chart.bottom - (Math.max(0, Math.min(yMax, Number(points || 0))) / yMax) * height;
+  const stepPoints = [];
+  data.forEach((item, index) => {
+    const x = xForDay(item.day);
+    const y = yForPoints(item.remaining);
+    if (index === 0) {
+      stepPoints.push(`${x},${yForPoints(maxPoints)}`);
+      stepPoints.push(`${x},${y}`);
+    } else {
+      const previousY = yForPoints(data[index - 1].remaining);
+      stepPoints.push(`${x},${previousY}`);
+      stepPoints.push(`${x},${y}`);
+    }
+  });
+  const yTickTarget = 6;
+  const yStep = yMax <= 8 ? 1 : Math.ceil(yMax / yTickTarget);
+  const yTicks = Array.from({ length: Math.floor(yMax / yStep) + 1 }, (_, i) => i * yStep).filter(v => v <= yMax);
+  if (!yTicks.includes(yMax)) yTicks.push(yMax);
+  const xLabelEvery = dayCount <= 14 ? 1 : Math.ceil(dayCount / 14);
+  const tickText = { fontSize: 15, fill: "#374151", fontWeight: 800 };
+  const axisText = { fontSize: 17, fill: "#111827", fontWeight: 900 };
+
+  return <section className="card burndownCard">
+    <div className="row">
+      <div>
+        <h2>Burndown Chart</h2>
+        <p className="muted">The line drops on the real sprint day when tasks were moved to Done.</p>
+      </div>
+      <span className="badge">{dayCount} days · {maxPoints} story points</span>
+    </div>
+    <div className="burndownScroll">
+      <svg className="burndownSvg" viewBox="0 0 1180 420" role="img" aria-label={`Burndown chart for ${dayCount} sprint days and ${maxPoints} story points.`}>
+        <rect x="0" y="0" width="1180" height="420" rx="18" fill="#f9fafb"/>
+        <line x1={chart.left} y1={chart.top} x2={chart.left} y2={chart.bottom} stroke="#111827" strokeWidth="2"/>
+        <line x1={chart.left} y1={chart.bottom} x2={chart.right} y2={chart.bottom} stroke="#111827" strokeWidth="2"/>
+        {yTicks.map(value => <g key={`y-${value}`}>
+          <line x1={chart.left} y1={yForPoints(value)} x2={chart.right} y2={yForPoints(value)} stroke="#e5e7eb" strokeWidth="1"/>
+          <text x={chart.left - 14} y={yForPoints(value) + 5} style={tickText} textAnchor="end">{value}</text>
+        </g>)}
+        {data.map(item => (item.day === 1 || item.day === dayCount || item.day % xLabelEvery === 0) && <g key={`x-${item.day}`}>
+          <line x1={xForDay(item.day)} y1={chart.bottom} x2={xForDay(item.day)} y2={chart.bottom + 8} stroke="#111827" strokeWidth="1.4"/>
+          <text x={xForDay(item.day)} y={chart.bottom + 28} style={tickText} textAnchor="middle">{item.day}</text>
+        </g>)}
+        <polyline points={stepPoints.join(" ")} fill="none" stroke="#111827" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+        {data.filter(item => item.doneToday > 0).map(item => <g key={`done-${item.day}`}>
+          <circle cx={xForDay(item.day)} cy={yForPoints(item.remaining)} r="6" fill="#111827"/>
+          <text x={xForDay(item.day)} y={yForPoints(item.remaining) - 12} style={{fontSize: 13, fill: "#111827", fontWeight: 900}} textAnchor="middle">-{item.doneToday}</text>
+        </g>)}
+        <text x={(chart.left + chart.right) / 2} y="410" style={axisText} textAnchor="middle">Sprint days</text>
+        <text x="22" y={(chart.top + chart.bottom) / 2} style={axisText} textAnchor="middle" transform={`rotate(-90 22 ${(chart.top + chart.bottom) / 2})`}>Story points remaining</text>
+      </svg>
+    </div>
   </section>
 }
 
@@ -1630,6 +1732,8 @@ function Milestones({sprints,milestones,form,setForm,addMilestone,patchMilestone
 function EditableMilestone({milestone,index,isLast,patchMilestone,deleteMilestone}) {
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...milestone});
+  const statusClass = milestoneStatusClass(milestone.status);
+  const colors = milestoneStatusColors(milestone.status);
 
   async function save() {
     await patchMilestone(milestone.id,{
@@ -1642,17 +1746,17 @@ function EditableMilestone({milestone,index,isLast,patchMilestone,deleteMileston
     setEditing(false);
   }
 
-  return <div className={`manualMilestoneNode ${milestoneStatusClass(milestone.status)}`}>
-    {!editing ? <div className="manualMilestoneCard">
+  return <div className={`manualMilestoneNode ${statusClass}`} data-status={statusClass}>
+    {!editing ? <div className="manualMilestoneCard" style={{background: colors.background, border: `2px solid ${colors.border}`, borderTop: `6px solid ${colors.border}`}}>
       <strong>#{milestone.order_index || index} {milestone.title}</strong>
       <span>{milestone.target_date || "No date"}</span>
-      <small>{milestone.status}</small>
+      <small className={`milestoneStatusBadge ${statusClass}`} style={{background: colors.border, color: "white"}}>{milestone.status}</small>
       <p>{milestone.description}</p>
       <div className="buttonRow">
         <button className="secondary" onClick={()=>setEditing(true)}>Edit</button>
         <button className="iconBtn" onClick={()=>deleteMilestone(milestone.id)}><Trash2 size={14}/></button>
       </div>
-    </div> : <div className="manualMilestoneCard form">
+    </div> : <div className="manualMilestoneCard form" style={{background: colors.background, border: `2px solid ${colors.border}`, borderTop: `6px solid ${colors.border}`}}>
       <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
       <input type="date" value={draft.target_date || ""} onChange={e=>setDraft({...draft,target_date:e.target.value})}/>
       <select value={draft.order_index || index} onChange={e=>setDraft({...draft,order_index:Number(e.target.value)})}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select>
@@ -1663,16 +1767,25 @@ function EditableMilestone({milestone,index,isLast,patchMilestone,deleteMileston
         <button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button>
       </div>
     </div>}
-    <div className="manualMilestoneStem"></div>
-    {milestone.status === "Active" && <div className="workerIcon" title="Active milestone">👷</div>}
+    <div className="manualMilestoneStem" style={{background: colors.border}}></div>
+    {statusClass === "milestoneActive" && <div className="workerIcon" title="Active milestone">👷</div>}
     {isLast && <div className="finishFlag" title="Final milestone">🚩</div>}
-    <div className="manualMilestoneDot"></div>
+    <div className="manualMilestoneDot" style={{background: colors.background, border: `4px solid ${colors.border}`}}></div>
   </div>
 }
 
+
+function milestoneStatusColors(status) {
+  const statusClass = milestoneStatusClass(status);
+  if (statusClass === "milestoneDone") return { background: "#dcfce7", border: "#16a34a" };
+  if (statusClass === "milestoneActive") return { background: "#ffedd5", border: "#f97316" };
+  return { background: "#fee2e2", border: "#dc2626" };
+}
+
 function milestoneStatusClass(status) {
-  if (status === "Done") return "milestoneDone";
-  if (status === "Active") return "milestoneActive";
+  const normalized = String(status || "Planned").trim().toLowerCase();
+  if (normalized === "done" || normalized === "completed" || normalized === "erledigt" || normalized === "abgeschlossen") return "milestoneDone";
+  if (normalized === "active" || normalized === "aktiv") return "milestoneActive";
   return "milestonePlanned";
 }
 
@@ -1791,6 +1904,90 @@ function EditableFeedbackItem({item,patchFeedbackItem,deleteFeedbackItem,nameOf,
         <button className="secondary" onClick={()=>setEditing(false)}>Cancel</button>
       </>}
     </div>
+  </div>
+}
+
+
+function riskRank(status) {
+  const normalized = String(status || "Future").toLowerCase();
+  if (normalized === "critical" || normalized === "acute") return 0;
+  if (normalized === "future") return 1;
+  return 2;
+}
+function riskClass(status) {
+  const normalized = String(status || "Future").toLowerCase();
+  if (normalized === "critical" || normalized === "acute") return "riskCritical";
+  if (normalized === "future") return "riskFuture";
+  return "riskResolved";
+}
+function RisksBoard({risks,form,setForm,addRisk,patchRisk,deleteRisk,nameOf}) {
+  const sortedRisks = [...risks].sort((a,b) => riskRank(a.status) - riskRank(b.status) || String(a.title || "").localeCompare(String(b.title || "")));
+  return <section className="grid two">
+    <Card title="Add Risk">
+      <form className="form" onSubmit={addRisk}>
+        <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Title"/>
+        <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Description"/>
+        <textarea value={form.mitigation} onChange={e=>setForm({...form,mitigation:e.target.value})} placeholder="Mitigation"/>
+        <select value={form.department} onChange={e=>setForm({...form,department:e.target.value})}>
+          {areaOptions.map(area => <option key={area.value} value={area.value}>{area.label}</option>)}
+        </select>
+        <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
+          {riskStatusOptions.map(status => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <button className="primary">Add Risk</button>
+      </form>
+    </Card>
+    <div className="riskList">
+      {sortedRisks.length === 0 && <p className="empty">No risks yet.</p>}
+      {sortedRisks.map(risk => <RiskItem key={risk.id} risk={risk} patchRisk={patchRisk} deleteRisk={deleteRisk} nameOf={nameOf}/>) }
+    </div>
+  </section>
+}
+function RiskItem({risk,patchRisk,deleteRisk,nameOf}) {
+  const [open,setOpen] = useState(false);
+  const [editing,setEditing] = useState(false);
+  const [draft,setDraft] = useState({...risk});
+  async function save() {
+    await patchRisk(risk.id, {
+      title: draft.title || "",
+      description: draft.description || "",
+      mitigation: draft.mitigation || "",
+      department: draft.department || "Project Management",
+      status: draft.status || "Future"
+    });
+    setEditing(false);
+  }
+  const cls = riskClass(risk.status);
+  return <div className={`riskItem ${cls}`}>
+    <button type="button" className="riskTitle" onClick={()=>setOpen(!open)}>
+      <strong>{risk.title}</strong>
+      <span className="badge">{risk.status || "Future"}</span>
+    </button>
+    {open && <div className="riskDetails">
+      {!editing ? <>
+        <p><strong>Department:</strong> {areaOptions.find(area => area.value === risk.department)?.label || risk.department || "Project Management"}</p>
+        <p><strong>Description:</strong> {risk.description || "No description."}</p>
+        <p><strong>Mitigation:</strong> {risk.mitigation || "No mitigation yet."}</p>
+        <p className="muted">By {nameOf(risk.created_by)}</p>
+      </> : <div className="form">
+        <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
+        <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})}/>
+        <textarea value={draft.mitigation || ""} onChange={e=>setDraft({...draft,mitigation:e.target.value})}/>
+        <select value={draft.department || "Project Management"} onChange={e=>setDraft({...draft,department:e.target.value})}>
+          {areaOptions.map(area => <option key={area.value} value={area.value}>{area.label}</option>)}
+        </select>
+        <select value={draft.status || "Future"} onChange={e=>setDraft({...draft,status:e.target.value})}>
+          {riskStatusOptions.map(status => <option key={status} value={status}>{status}</option>)}
+        </select>
+      </div>}
+      <div className="buttonRow">
+        {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <>
+          <button className="primary" onClick={save}>Save</button>
+          <button className="secondary" onClick={()=>setEditing(false)}>Cancel</button>
+        </>}
+        <button className="iconBtn" onClick={()=>deleteRisk(risk.id)}><Trash2 size={16}/></button>
+      </div>
+    </div>}
   </div>
 }
 

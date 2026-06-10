@@ -1402,3 +1402,369 @@
   color: #9ca3af;
   font-size: 11px;
 }
+
+/* Requested updates: burndown axes and milestone status colors */
+.chartAxisText {
+  font-size: 4px;
+  fill: currentColor;
+}
+
+.manualMilestoneNode.milestonePlanned .manualMilestoneCard,
+.manualMilestoneNode.milestonePlanned .manualMilestoneDot,
+.manualMilestoneNode.milestonePlanned .manualMilestoneStem {
+  background: #fee2e2;
+  border-color: #ef4444;
+}
+
+.manualMilestoneNode.milestoneActive .manualMilestoneCard,
+.manualMilestoneNode.milestoneActive .manualMilestoneDot,
+.manualMilestoneNode.milestoneActive .manualMilestoneStem {
+  background: #ffedd5;
+  border-color: #f97316;
+}
+
+.manualMilestoneNode.milestoneDone .manualMilestoneCard,
+.manualMilestoneNode.milestoneDone .manualMilestoneDot,
+.manualMilestoneNode.milestoneDone .manualMilestoneStem {
+  background: #dcfce7;
+  border-color: #22c55e;
+}
+
+.manualMilestoneNode.milestoneDone .manualMilestoneCard small {
+  background: #16a34a;
+  color: white;
+}
+
+
+/* Final correction: compact burndown axes and unmistakable milestone status colors */
+.miniBurn svg.burndownSvg {
+  width: 100%;
+  height: 250px;
+  color: #111827;
+  background: #f9fafb;
+  border-radius: 14px;
+  margin-top: 8px;
+}
+
+.chartAxisText {
+  font-size: 11px !important;
+  fill: #374151 !important;
+  font-weight: 700;
+}
+
+.chartAxisTitle {
+  font-size: 12px;
+  fill: #6b7280;
+  font-weight: 900;
+}
+
+.chartAxisLine {
+  stroke: #111827;
+  stroke-width: 1.2;
+}
+
+.chartGridLine {
+  stroke: #e5e7eb;
+  stroke-width: 1;
+}
+
+.chartBurnLine {
+  stroke: #111827;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.manualMilestoneNode.milestonePlanned .manualMilestoneCard,
+.manualMilestoneNode.milestonePlanned .manualMilestoneDot,
+.manualMilestoneNode.milestonePlanned .manualMilestoneStem {
+  background: #fee2e2 !important;
+  border-color: #dc2626 !important;
+}
+
+.manualMilestoneNode.milestoneActive .manualMilestoneCard,
+.manualMilestoneNode.milestoneActive .manualMilestoneDot,
+.manualMilestoneNode.milestoneActive .manualMilestoneStem {
+  background: #ffedd5 !important;
+  border-color: #f97316 !important;
+}
+
+.manualMilestoneNode.milestoneDone .manualMilestoneCard,
+.manualMilestoneNode.milestoneDone .manualMilestoneDot,
+.manualMilestoneNode.milestoneDone .manualMilestoneStem {
+  background: #dcfce7 !important;
+  border-color: #16a34a !important;
+}
+
+.manualMilestoneNode.milestonePlanned .manualMilestoneCard small,
+.manualMilestoneNode.milestoneActive .manualMilestoneCard small,
+.manualMilestoneNode.milestoneDone .manualMilestoneCard small {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-weight: 900;
+}
+
+.manualMilestoneNode.milestonePlanned .manualMilestoneCard small {
+  background: #dc2626 !important;
+  color: white !important;
+}
+
+.manualMilestoneNode.milestoneActive .manualMilestoneCard small {
+  background: #f97316 !important;
+  color: white !important;
+}
+
+.manualMilestoneNode.milestoneDone .manualMilestoneCard small {
+  background: #16a34a !important;
+  color: white !important;
+}
+
+/* ACTUAL FIX 2026-06-10: compact burndown axis labels + strict milestone status colors */
+.card.miniBurn svg.burndownSvg {
+  width: 100% !important;
+  height: 190px !important;
+  max-height: 190px !important;
+}
+.card.miniBurn .chartAxisText {
+  font-size: 7px !important;
+  fill: #374151 !important;
+  font-weight: 700 !important;
+}
+.card.miniBurn .chartAxisTitle {
+  font-size: 8px !important;
+  fill: #6b7280 !important;
+  font-weight: 800 !important;
+}
+.card.miniBurn .chartAxisLine {
+  stroke: #111827 !important;
+  stroke-width: 0.9 !important;
+}
+.card.miniBurn .chartGridLine {
+  stroke: #e5e7eb !important;
+  stroke-width: 0.7 !important;
+}
+.card.miniBurn .chartBurnLine {
+  stroke: #111827 !important;
+  stroke-width: 3 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneCard,
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneDot,
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneStem {
+  background: #fee2e2 !important;
+  border-color: #dc2626 !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneCard small {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneCard,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneDot,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneStem {
+  background: #ffedd5 !important;
+  border-color: #f97316 !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneCard small {
+  background: #f97316 !important;
+  color: #ffffff !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneCard,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneDot,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneStem {
+  background: #dcfce7 !important;
+  border-color: #16a34a !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneCard small {
+  background: #16a34a !important;
+  color: #ffffff !important;
+}
+.manualMilestoneTimeline .manualMilestoneCard small {
+  display: inline-flex !important;
+  width: fit-content !important;
+  border-radius: 999px !important;
+  padding: 4px 9px !important;
+  font-weight: 900 !important;
+}
+
+/* USER REQUEST FIX: final burndown axis sizing and milestone status colors */
+.card.miniBurn {
+  overflow: hidden;
+}
+.card.miniBurn svg.burndownSvg {
+  width: 100% !important;
+  height: 178px !important;
+  max-height: 178px !important;
+  background: #f9fafb !important;
+  border-radius: 14px !important;
+  margin-top: 8px !important;
+}
+.card.miniBurn text {
+  font-size: 6.5px !important;
+  line-height: 1 !important;
+}
+.card.miniBurn .muted {
+  font-size: 12px !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneCard,
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneDot,
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneStem {
+  background: #fee2e2 !important;
+  border: 2px solid #dc2626 !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneCard,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneDot,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneStem {
+  background: #ffedd5 !important;
+  border: 2px solid #f97316 !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneCard,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneDot,
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneStem {
+  background: #dcfce7 !important;
+  border: 2px solid #16a34a !important;
+}
+.manualMilestoneTimeline .milestoneStatusBadge {
+  display: inline-flex !important;
+  width: fit-content !important;
+  border-radius: 999px !important;
+  padding: 5px 12px !important;
+  font-weight: 950 !important;
+  color: #ffffff !important;
+  text-transform: uppercase !important;
+  letter-spacing: .04em !important;
+}
+.manualMilestoneTimeline .milestoneStatusBadge.milestonePlanned {
+  background: #dc2626 !important;
+}
+.manualMilestoneTimeline .milestoneStatusBadge.milestoneActive {
+  background: #f97316 !important;
+}
+.manualMilestoneTimeline .milestoneStatusBadge.milestoneDone {
+  background: #16a34a !important;
+}
+
+/* 2026-06-10 REAL FINAL FIX: compact burndown labels and strict milestone colors */
+.card.miniBurn.compactBurndown {
+  overflow: hidden !important;
+}
+.card.miniBurn.compactBurndown .row h2 {
+  margin-bottom: 4px !important;
+}
+.card.miniBurn.compactBurndown .muted {
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+}
+.card.miniBurn.compactBurndown svg.burndownFinal {
+  width: 100% !important;
+  height: 170px !important;
+  max-height: 170px !important;
+  display: block !important;
+  background: #f9fafb !important;
+  border-radius: 14px !important;
+  margin-top: 6px !important;
+}
+.card.miniBurn.compactBurndown svg.burndownFinal text {
+  font-size: 5px !important;
+  line-height: 1 !important;
+}
+
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneCard {
+  background: #fee2e2 !important;
+  border: 2px solid #dc2626 !important;
+  border-top: 6px solid #dc2626 !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneCard {
+  background: #ffedd5 !important;
+  border: 2px solid #f97316 !important;
+  border-top: 6px solid #f97316 !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneCard {
+  background: #dcfce7 !important;
+  border: 2px solid #16a34a !important;
+  border-top: 6px solid #16a34a !important;
+}
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneDot { background: #fee2e2 !important; border: 4px solid #dc2626 !important; }
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneDot { background: #ffedd5 !important; border: 4px solid #f97316 !important; }
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneDot { background: #dcfce7 !important; border: 4px solid #16a34a !important; }
+.manualMilestoneTimeline .manualMilestoneNode.milestonePlanned .manualMilestoneStem { background: #dc2626 !important; }
+.manualMilestoneTimeline .manualMilestoneNode.milestoneActive .manualMilestoneStem { background: #f97316 !important; }
+.manualMilestoneTimeline .manualMilestoneNode.milestoneDone .manualMilestoneStem { background: #16a34a !important; }
+
+/* Clean, readable burndown chart */
+.burndownCard {
+  margin-bottom: 20px;
+}
+.burndownScroll {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.burndownSvg {
+  display: block;
+  width: 100%;
+  min-width: 900px;
+  height: 460px;
+  margin-top: 12px;
+}
+@media (max-width: 900px) {
+  .burndownSvg { width: 900px; }
+}
+
+/* Risks tab */
+.riskList {
+  display: grid;
+  gap: 12px;
+}
+.riskItem {
+  border-radius: 18px;
+  border: 2px solid #e5e7eb;
+  background: white;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(15,23,42,.04);
+}
+.riskTitle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  text-align: left;
+}
+.riskDetails {
+  border-top: 1px solid #e5e7eb;
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
+}
+.riskCritical {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+.riskCritical .badge {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.riskFuture {
+  border-color: #fb923c;
+  background: #fff7ed;
+}
+.riskFuture .badge {
+  background: #ffedd5;
+  color: #9a3412;
+}
+.riskResolved {
+  border-color: #9ca3af;
+  background: #f3f4f6;
+  opacity: .72;
+}
+.riskResolved .badge {
+  background: #e5e7eb;
+  color: #374151;
+}
