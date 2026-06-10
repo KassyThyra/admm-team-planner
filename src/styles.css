@@ -1867,3 +1867,17 @@
   gap: 8px;
   margin-top: 10px;
 }
+
+
+.checkInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+  font-weight: 800;
+}
+
+.checkInline input {
+  width: auto;
+}

@@ -305,7 +305,7 @@ function App() {
       priority: taskForm.priority, deadline: taskForm.deadline || null, points: Number(taskForm.points || 3),
       status: taskForm.status, backlog_status: taskForm.sprint_id ? "In Sprint" : "Planned", sprint_id: taskForm.sprint_id || null,
       done_definition: taskForm.done_definition, evidence: taskForm.evidence, planned_start: taskForm.planned_start || null,
-      planned_end: taskForm.planned_end || null, created_by: profile?.id
+      planned_end: taskForm.planned_end || null, repeat_weekly: Boolean(taskForm.repeat_weekly), created_by: profile?.id
     };
     const { data, error } = await supabase.from("tasks").insert(payload).select().single();
     if (error) { alert(error.message); return; }
@@ -355,7 +355,7 @@ function App() {
       status: newStatus,
       backlog_status: newStatus === "Done" ? "Done" : "In Sprint"
     };
-    if (newStatus === "Done" && !wasDone) nextPatch.done_at = new Date().toISOString();
+    if (newStatus === "Done" && !wasDone) nextPatch.done_at = localDateKey(new Date());
     if (newStatus !== "Done" && wasDone) nextPatch.done_at = null;
     await patchTask(task.id, nextPatch);
     if (newStatus === "Done" && !wasDone) {
@@ -806,12 +806,34 @@ function getTaskRange(tasks) {
   const dates = tasks.flatMap(t => [t.planned_start, t.planned_end || t.deadline]).filter(Boolean).sort();
   return { start: dates[0], end: dates[dates.length - 1] };
 }
+function localDateKey(value = new Date()) {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function dateFromKey(key) {
+  if (!key) return null;
+  const [y,m,d] = String(key).slice(0,10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+function addDaysKey(key, amount) {
+  const d = dateFromKey(key);
+  if (!d) return key;
+  d.setDate(d.getDate() + amount);
+  return localDateKey(d);
+}
 function daysBetweenDates(start, end) {
   const result = [];
   if (!start || !end) return result;
-  const s = new Date(start); const e = new Date(end);
-  s.setHours(12,0,0,0); e.setHours(12,0,0,0);
-  for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)) result.push(d.toISOString().slice(0,10));
+  const s = dateFromKey(start); const e = dateFromKey(end);
+  if (!s || !e) return result;
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)) result.push(localDateKey(d));
   return result;
 }
 function dateToColumn(date, days) {
@@ -819,8 +841,29 @@ function dateToColumn(date, days) {
   return index >= 0 ? index + 2 : 2;
 }
 function taskDoneDateKey(task) {
-  const raw = task.done_at || task.completed_at || task.updated_at || task.created_at;
-  return raw ? String(raw).slice(0, 10) : null;
+  const raw = task.done_at || task.completed_at || (isDoneStatus(task.status) ? task.updated_at : null);
+  return raw ? localDateKey(raw) : null;
+}
+function diffDaysInclusive(start, end) {
+  const s = dateFromKey(start); const e = dateFromKey(end);
+  if (!s || !e) return 0;
+  return Math.max(0, Math.round((e - s) / (1000*60*60*24)));
+}
+function expandWeeklyTaskCalendarItems(tasks, buildItem) {
+  return tasks.flatMap(task => {
+    const start = task.planned_start || task.deadline;
+    if (!start) return [];
+    const end = task.planned_end || task.deadline || start;
+    const durationDays = diffDaysInclusive(start, end);
+    if (!task.repeat_weekly) return [buildItem(task, start, end, `task-${task.id}`, false)];
+    const repeatUntil = task.planned_end || task.deadline || addDaysKey(start, 180);
+    const items = [];
+    for (let occurrenceStart = start, index = 1; occurrenceStart <= repeatUntil && index <= 52; occurrenceStart = addDaysKey(occurrenceStart, 7), index += 1) {
+      const occurrenceEnd = addDaysKey(occurrenceStart, durationDays);
+      items.push(buildItem(task, occurrenceStart, occurrenceEnd, `task-${task.id}-weekly-${index}`, true));
+    }
+    return items;
+  });
 }
 function buildBurndownData(sprint, tasks) {
   if (!sprint) return [];
@@ -855,7 +898,7 @@ function canMoveTask(task, newStatus, profile, taskAssignees, deps) {
   return { ok: true };
 }
 
-function emptyTask(){return{title:"",description:"",owner_id:"",assignee_ids:[],dependency_ids:[],discipline:"Software",work_type:"Organization",priority:"P3",deadline:"",points:3,status:"Backlog",sprint_id:"",done_definition:"",evidence:"",planned_start:"",planned_end:""}}
+function emptyTask(){return{title:"",description:"",owner_id:"",assignee_ids:[],dependency_ids:[],discipline:"Software",work_type:"Organization",priority:"P3",deadline:"",points:3,status:"Backlog",sprint_id:"",done_definition:"",evidence:"",planned_start:"",planned_end:"",repeat_weekly:false}}
 function emptySprint(){return{name:"",goal:"",start_date:"",end_date:"",status:"Planned",capacity_points:0}}
 function emptyOrder(){return{name:"",description:"",shop:"",quantity:"1",price:"",supplier_link:"",owner_id:"",location:"",status:"Needed"}}
 function emptyBlocker(){return{question:"",tried:"",needed_from:""}}
@@ -1001,6 +1044,7 @@ function BacklogTaskCard({task,profiles,sprints=[],allTasks=[],activeSprint,addT
       planned_end: draft.planned_end || null,
       done_definition: draft.done_definition,
       evidence: draft.evidence,
+      repeat_weekly: Boolean(draft.repeat_weekly),
       sprint_id: nextSprintId,
       backlog_status: nextSprintId ? "In Sprint" : "Planned",
       status: nextSprintId ? (task.status === "Backlog" ? "To Do" : task.status) : "Backlog"
@@ -1317,16 +1361,16 @@ function TeamCalendar({sprints,tasks,schedule,meetings,profiles,assigneesOf,name
       meta:`${m.meeting_type || ""} ${m.participants ? "· " + m.participants : ""}`,
       tone:"meeting"
     })),
-    ...tasks.map(t => {
+    ...expandWeeklyTaskCalendarItems(tasks, (t, start, end, id, isRepeat) => {
       const assigned = assigneesOf(t.id);
       const ownerId = assigned[0]?.id || t.owner_id;
       return {
-        id:`task-${t.id}`,
-        type:"Task",
-        title:t.title,
-        start:t.planned_start || t.deadline,
-        end:t.planned_end || t.deadline,
-        meta:`${nameOf(ownerId)} · ${t.discipline || t.area} · ${t.status} · ${t.priority}`,
+        id,
+        type: isRepeat ? "Weekly task" : "Task",
+        title: isRepeat ? `${t.title} (weekly)` : t.title,
+        start,
+        end,
+        meta:`${nameOf(ownerId)} · ${t.discipline || t.area} · ${t.status} · ${t.priority}${isRepeat ? " · repeats weekly" : ""}`,
         tone: personTone(ownerId, profiles)
       };
     }),
@@ -1344,7 +1388,7 @@ function TeamCalendar({sprints,tasks,schedule,meetings,profiles,assigneesOf,name
 
 function MyCalendar({tasks,schedule,meetings,form,setForm,addSchedule,deleteSchedule}) {
   const items = [
-    ...tasks.map(t => ({ id:`task-${t.id}`, type:"Task", title:t.title, start:t.planned_start || t.deadline, end:t.planned_end || t.deadline, meta:`${t.status} · ${t.discipline || t.area}`, tone:"task" })),
+    ...expandWeeklyTaskCalendarItems(tasks, (t, start, end, id, isRepeat) => ({ id, type: isRepeat ? "Weekly task" : "Task", title: isRepeat ? `${t.title} (weekly)` : t.title, start, end, meta:`${t.status} · ${t.discipline || t.area}${isRepeat ? " · repeats weekly" : ""}`, tone:"task" })),
     ...schedule.filter(s => appointmentVisibility(s) === "private").map(s => ({ id:`schedule-${s.id}`, type:"Private Appointment", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"privateAppointment" })),
     ...schedule.filter(s => appointmentVisibility(s) === "group").map(s => ({ id:`group-${s.id}`, type:"Group Appointment", title:s.title, start:s.start_date, end:s.end_date || s.start_date, meta:s.notes || "", tone:"groupAppointment" })),
     ...meetings.map(m => ({ id:`meeting-${m.id}`, type:"Meeting", title:m.title, start:m.meeting_date, end:m.meeting_date, meta:`${m.meeting_type || ""} ${m.participants ? "· " + m.participants : ""}`, tone:"meeting" })),
@@ -2071,7 +2115,7 @@ function RiskItem({risk,patchRisk,deleteRisk,nameOf}) {
 
 function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
   function toggle(listName,id){const exists=form[listName].includes(id); setForm({...form,[listName]:exists?form[listName].filter(x=>x!==id):[...form[listName],id]})}
-  return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Main owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Additional owners</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/><input type="date" value={form.planned_end} onChange={e=>setForm({...form,planned_end:e.target.value})}/></div><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Dependencies</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><button className="primary"><Plus size={18}/> Create task</button></form>
+  return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Main owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Additional owners</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/><input type="date" value={form.planned_end} onChange={e=>setForm({...form,planned_end:e.target.value})}/></div><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Dependencies</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><label className="checkInline"><input type="checkbox" checked={Boolean(form.repeat_weekly)} onChange={e=>setForm({...form,repeat_weekly:e.target.checked})}/> Repeat weekly</label><button className="primary"><Plus size={18}/> Create task</button></form>
 }
 
 function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,deleteTaskFile,removeTaskFromSprint,sprints=[],allTasks=[],replaceTaskDependencies}) {
@@ -2093,6 +2137,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
     done_definition: task.done_definition || "",
     evidence: task.evidence || "",
     sprint_id: task.sprint_id || "",
+    repeat_weekly: Boolean(task.repeat_weekly),
     dependency_ids: deps.map(d => d.id)
   });
   function toggleDependency(depId) {
@@ -2114,6 +2159,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
       planned_end: draft.planned_end || null,
       done_definition: draft.done_definition,
       evidence: draft.evidence,
+      repeat_weekly: Boolean(draft.repeat_weekly),
       sprint_id: nextSprintId,
       backlog_status: nextSprintId ? "In Sprint" : "Planned",
       status: nextStatus
@@ -2127,6 +2173,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
       <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"open"}</p>
       <p className="muted">Location: {task.sprint_id ? (sprints.find(s=>s.id===task.sprint_id)?.name || "Sprint") : "Backlog"}</p>
       <p className="muted">Owner: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p>
+      {task.repeat_weekly && <p className="muted">Repeats weekly</p>}
       <p>{task.description}</p>
       {deps.length>0&&<p className="muted"><GitBranch size={14}/> Depends on: {deps.map(d=>d.title).join(", ")}</p>}
       <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
@@ -2145,6 +2192,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
       </select>
       <div className="formRow"><input type="date" value={draft.planned_start} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/><input type="date" value={draft.planned_end} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/></div>
       <input type="date" value={draft.deadline} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
+      <label className="checkInline"><input type="checkbox" checked={Boolean(draft.repeat_weekly)} onChange={e=>setDraft({...draft,repeat_weekly:e.target.checked})}/> Repeat weekly</label>
       <textarea placeholder="Definition of Done" value={draft.done_definition} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
       <textarea placeholder="Evidence / Review notes" value={draft.evidence} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
       <label>Dependencies</label>
