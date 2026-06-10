@@ -95,7 +95,11 @@ function App() {
   const [taskForm, setTaskForm] = useState(emptyTask());
   const [sprintForm, setSprintForm] = useState(emptySprint());
   const [orderForm, setOrderForm] = useState(emptyOrder());
-  const [orderShippingCost, setOrderShippingCost] = useState(() => localStorage.getItem("admm-order-shipping-cost") || "");
+  const [orderShippingItems, setOrderShippingItems] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("admm-order-shipping-items") || "[]"); }
+    catch { return []; }
+  });
+  const [shippingDraft, setShippingDraft] = useState({ shop: "", cost: "" });
   const [blockerForm, setBlockerForm] = useState(emptyBlocker());
   const [scheduleForm, setScheduleForm] = useState(emptySchedule());
   const [meetingForm, setMeetingForm] = useState(emptyMeeting());
@@ -115,9 +119,25 @@ function App() {
     else localStorage.removeItem("admm-selected-sprint");
   }
 
-  function updateOrderShippingCost(value) {
-    setOrderShippingCost(value);
-    localStorage.setItem("admm-order-shipping-cost", value);
+  function saveOrderShippingItems(nextItems) {
+    setOrderShippingItems(nextItems);
+    localStorage.setItem("admm-order-shipping-items", JSON.stringify(nextItems));
+  }
+
+  function addOrderShippingCost(e) {
+    e.preventDefault();
+    if (!shippingDraft.shop.trim() && !shippingDraft.cost.trim()) return;
+    const nextItem = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      shop: shippingDraft.shop.trim() || "Shipping",
+      cost: shippingDraft.cost.trim()
+    };
+    saveOrderShippingItems([...orderShippingItems, nextItem]);
+    setShippingDraft({ shop: "", cost: "" });
+  }
+
+  function deleteOrderShippingCost(id) {
+    saveOrderShippingItems(orderShippingItems.filter(item => item.id !== id));
   }
 
   useEffect(() => {
@@ -682,7 +702,7 @@ function App() {
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} setTab={setTab} />}
       {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} meetings={meetings} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} replaceTaskDependencies={replaceTaskDependencies} />}
       {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} meetings={meetings} profiles={profiles} assigneesOf={assigneesOf} nameOf={nameOf} />}
-      {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} shippingCost={orderShippingCost} setShippingCost={updateOrderShippingCost} />}
+      {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} shippingItems={orderShippingItems} shippingDraft={shippingDraft} setShippingDraft={setShippingDraft} addShippingCost={addOrderShippingCost} deleteShippingCost={deleteOrderShippingCost} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "meetings" && <Meetings sprints={sprints} sprintForm={sprintForm} setSprintForm={setSprintForm} addSprint={addSprint} patchSprint={patchSprint} deleteSprint={deleteSprint} meetingForm={meetingForm} setMeetingForm={setMeetingForm} addMeeting={addMeeting} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} meetings={meetings} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
       {tab === "gantt" && <Gantt tasks={tasks} sprints={sprints} />}
@@ -1350,30 +1370,41 @@ function MyCalendar({tasks,schedule,meetings,form,setForm,addSchedule,deleteSche
   </section>
 }
 
-function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile,shippingCost,setShippingCost}) {
+function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile,shippingItems,shippingDraft,setShippingDraft,addShippingCost,deleteShippingCost}) {
   const sortedOrders = sortedOrdersList(orders);
   const ordersTotal = orders.reduce((sum,o)=>{
     const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
     return sum + parsePriceValue(o.price) * quantity;
   }, 0);
-  const shippingValue = parsePriceValue(shippingCost);
-  const totalPrice = ordersTotal + shippingValue;
+  const shippingTotal = (shippingItems || []).reduce((sum,item)=>sum + parsePriceValue(item.cost), 0);
+  const totalPrice = ordersTotal + shippingTotal;
 
   return <section className="grid two">
-    <Card title="Add Order">
-      <OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/>
-    </Card>
-    <div className="taskList">
+    <div className="stack">
+      <Card title="Add Order">
+        <OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/>
+      </Card>
       <Card title="Costs">
-        <div className="form">
-          <label>Shipping cost</label>
-          <input placeholder="Shipping cost" value={shippingCost} onChange={e=>setShippingCost(e.target.value)} />
-          <div className="priceSummary compactPriceSummary">
-            <strong>Total cost</strong>
-            <span>{formatEuro(totalPrice)}</span>
+        <form className="form" onSubmit={addShippingCost}>
+          <div className="formRow">
+            <input placeholder="Shop / supplier" value={shippingDraft.shop} onChange={e=>setShippingDraft({...shippingDraft,shop:e.target.value})}/>
+            <input placeholder="Shipping cost" value={shippingDraft.cost} onChange={e=>setShippingDraft({...shippingDraft,cost:e.target.value})}/>
           </div>
+          <button className="secondary">Add shipping cost</button>
+        </form>
+        {(shippingItems || []).length > 0 && <div className="shippingCostList">
+          {shippingItems.map(item => <div className="fileRow" key={item.id}>
+            <span><strong>{item.shop}</strong> · {formatEuro(parsePriceValue(item.cost))}</span>
+            <button className="miniDelete" onClick={()=>deleteShippingCost(item.id)} type="button"><Trash2 size={14}/></button>
+          </div>)}
+        </div>}
+        <div className="priceSummary compactPriceSummary">
+          <strong>Total cost</strong>
+          <span>{formatEuro(totalPrice)}</span>
         </div>
       </Card>
+    </div>
+    <div className="taskList">
       <div className="ordersTableWrap">
         <table className="ordersTable compactOrdersTable">
           <thead>

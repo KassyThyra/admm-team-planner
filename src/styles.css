@@ -1886,3 +1886,13 @@
   background: #e5e7eb;
   color: #374151;
 }
+
+.shippingCostList {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.shippingCostList .fileRow span {
+  overflow-wrap: anywhere;
+}
