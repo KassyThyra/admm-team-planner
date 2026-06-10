@@ -113,12 +113,6 @@ function App() {
 
   const isConfigured = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.includes("YOUR-PROJECT"));
 
-  function setSelectedSprintId(nextId) {
-    setSelectedSprintIdState(nextId);
-    if (nextId) localStorage.setItem("admm-selected-sprint", nextId);
-    else localStorage.removeItem("admm-selected-sprint");
-  }
-
   function saveOrderShippingItems(nextItems) {
     setOrderShippingItems(nextItems);
     localStorage.setItem("admm-order-shipping-items", JSON.stringify(nextItems));
@@ -138,6 +132,12 @@ function App() {
 
   function deleteOrderShippingCost(id) {
     saveOrderShippingItems(orderShippingItems.filter(item => item.id !== id));
+  }
+
+  function setSelectedSprintId(nextId) {
+    setSelectedSprintIdState(nextId);
+    if (nextId) localStorage.setItem("admm-selected-sprint", nextId);
+    else localStorage.removeItem("admm-selected-sprint");
   }
 
   useEffect(() => {
@@ -746,32 +746,17 @@ function formatEuro(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" }).format(value || 0);
 }
 function normalizedOrderStatus(status) {
-  const value = String(status || "Needed").trim();
-  if (value.toLowerCase() === "shipped") return "Ordered";
-  if (value.toLowerCase() === "ordert") return "Ordered";
-  if (value.toLowerCase() === "nedded") return "Needed";
-  if (value.toLowerCase() === "needed") return "Needed";
-  if (value.toLowerCase() === "ordered") return "Ordered";
-  if (value.toLowerCase() === "arrived") return "Arrived";
-  return value || "Needed";
+  if (status === "Shipped") return "Ordered";
+  return orderStatus.includes(status) ? status : "Needed";
 }
 function orderStatusRank(status) {
-  const value = normalizedOrderStatus(status);
-  return value === "Needed" ? 0 : value === "Ordered" ? 1 : 2;
-}
-function orderStatusClass(status) {
-  const value = normalizedOrderStatus(status).toLowerCase();
-  if (value === "needed") return "orderNeeded";
-  if (value === "ordered") return "orderOrdered";
-  if (value === "arrived") return "orderArrived";
-  return "";
+  return ({Needed: 0, Ordered: 1, Arrived: 2})[normalizedOrderStatus(status)] ?? 0;
 }
 function sortedOrdersList(orders) {
-  return [...orders].sort((a,b) => {
-    const statusCompare = orderStatusRank(a.status) - orderStatusRank(b.status);
-    if (statusCompare !== 0) return statusCompare;
-    return String(a.name || "").localeCompare(String(b.name || ""));
-  });
+  return [...orders].sort((a,b) => orderStatusRank(a.status) - orderStatusRank(b.status) || String(a.name || "").localeCompare(String(b.name || "")));
+}
+function orderStatusClass(status) {
+  return `orderRow ${normalizedOrderStatus(status).toLowerCase()}`;
 }
 function downloadOrdersCsv(orders, nameOf) {
   const header = ["Part", "Description", "Supplier / Shop", "Quantity", "Unit price", "Total price", "Status", "Owner", "Link"];
@@ -1370,13 +1355,13 @@ function MyCalendar({tasks,schedule,meetings,form,setForm,addSchedule,deleteSche
   </section>
 }
 
-function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile,shippingItems,shippingDraft,setShippingDraft,addShippingCost,deleteShippingCost}) {
+function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile,shippingItems=[],shippingDraft,setShippingDraft,addShippingCost,deleteShippingCost}) {
   const sortedOrders = sortedOrdersList(orders);
   const ordersTotal = orders.reduce((sum,o)=>{
     const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
     return sum + parsePriceValue(o.price) * quantity;
   }, 0);
-  const shippingTotal = (shippingItems || []).reduce((sum,item)=>sum + parsePriceValue(item.cost), 0);
+  const shippingTotal = shippingItems.reduce((sum,item)=>sum + parsePriceValue(item.cost), 0);
   const totalPrice = ordersTotal + shippingTotal;
 
   return <section className="grid two">
@@ -1386,19 +1371,20 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
       </Card>
       <Card title="Costs">
         <form className="form" onSubmit={addShippingCost}>
+          <label>Shipping cost</label>
           <div className="formRow">
             <input placeholder="Shop / supplier" value={shippingDraft.shop} onChange={e=>setShippingDraft({...shippingDraft,shop:e.target.value})}/>
             <input placeholder="Shipping cost" value={shippingDraft.cost} onChange={e=>setShippingDraft({...shippingDraft,cost:e.target.value})}/>
           </div>
           <button className="secondary">Add shipping cost</button>
         </form>
-        {(shippingItems || []).length > 0 && <div className="shippingCostList">
+        {shippingItems.length > 0 && <div className="shippingCostList">
           {shippingItems.map(item => <div className="fileRow" key={item.id}>
             <span><strong>{item.shop}</strong> · {formatEuro(parsePriceValue(item.cost))}</span>
-            <button className="miniDelete" onClick={()=>deleteShippingCost(item.id)} type="button"><Trash2 size={14}/></button>
+            <button className="miniDelete" type="button" onClick={()=>deleteShippingCost(item.id)}><Trash2 size={14}/></button>
           </div>)}
         </div>}
-        <div className="priceSummary compactPriceSummary">
+        <div className="priceSummary">
           <strong>Total cost</strong>
           <span>{formatEuro(totalPrice)}</span>
         </div>
@@ -1411,7 +1397,7 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
             <tr>
               <th>Part</th>
               <th>Qty</th>
-              <th>Unit</th>
+              <th>Unit price</th>
               <th>Total</th>
               <th>Status</th>
               <th>Sell link</th>
@@ -1445,8 +1431,7 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
 function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploadGenericFile,deleteGenericFile}) {
   const [editing,setEditing]=useState(false);
   const [expanded,setExpanded]=useState(false);
-  const [draft,setDraft]=useState({...order});
-  const status = normalizedOrderStatus(order.status);
+  const [draft,setDraft]=useState({...order, status: normalizedOrderStatus(order.status)});
   async function save() {
     await patchOrder(order.id, {
       name: draft.name || draft.item || "",
@@ -1462,17 +1447,18 @@ function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploa
     setEditing(false);
     setExpanded(true);
   }
+  const status = normalizedOrderStatus(order.status);
   const quantity = Number.parseFloat(String(order.quantity || "1").replace(",", ".")) || 1;
-  const total = formatEuro(parsePriceValue(order.price) * quantity);
-  return <div className={`taskCard orderCard ${orderStatusClass(status)}`}>
-    <div className="row clickable" onClick={()=>!editing && setExpanded(!expanded)}>
+  const itemTotal = parsePriceValue(order.price) * quantity;
+  return <div className="taskCard compactTask">
+    <div className="row clickable" onClick={()=>setExpanded(!expanded)}>
       <strong>{order.name || order.item || "Ordering"}</strong>
-      <span className={`badge ${orderStatusClass(status)}`}>{status}</span>
+      <span className={`badge orderBadge ${status.toLowerCase()}`}>{status}</span>
     </div>
-    {(expanded || editing) && <>
+    {expanded && <>
       {!editing ? <>
-        {order.description && <p>{order.description}</p>}
-        <p className="muted">{order.shop || "No supplier"} · Quantity {order.quantity || "1"} · Unit price {order.price || "-"} · Total {total} · Owner: {nameOf(order.owner_id)} · Location: {order.location || "-"}</p>
+        <p>{order.description}</p>
+        <p className="muted">{order.shop || "No shop"} · Quantity {order.quantity || "1"} · Unit price {order.price || "-"} · Total {formatEuro(itemTotal)} · Owner: {nameOf(order.owner_id)} · Location: {order.location || "-"}</p>
         {order.supplier_link&&<a href={order.supplier_link} target="_blank" rel="noreferrer">Open link</a>}
       </> : <div className="form">
         <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="What needs to be ordered?"/>
@@ -1482,7 +1468,7 @@ function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploa
         <div className="formRow"><input value={draft.quantity || ""} onChange={e=>setDraft({...draft,quantity:e.target.value})} placeholder="Quantity"/><input value={draft.price || ""} onChange={e=>setDraft({...draft,price:e.target.value})} placeholder="Price"/></div>
         <input value={draft.location || ""} onChange={e=>setDraft({...draft,location:e.target.value})} placeholder="Location"/>
         <select value={draft.owner_id || ""} onChange={e=>setDraft({...draft,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
-        <select value={normalizedOrderStatus(draft.status || "Needed")} onChange={e=>setDraft({...draft,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+        <select value={normalizedOrderStatus(draft.status)} onChange={e=>setDraft({...draft,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
       </div>}
       <FileBox title="Files for order" files={files} onUpload={file=>uploadGenericFile("order", order.id, file)} onDelete={deleteGenericFile}/>
       <div className="buttonRow">
@@ -1493,7 +1479,6 @@ function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploa
     </>}
   </div>
 }
-
 
 function Blockers({blockers,form,setForm,addBlocker,patchBlocker,deleteBlocker,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
   const sortedBlockers = [...blockers].sort((a,b) => {
@@ -1554,9 +1539,9 @@ function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,delete
     <div className="stack"><Card title="Create Sprint"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
     <div className="stack">
       <h2>Sprints</h2>
-      {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>) }
+      {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
       <h2>Meetings</h2>
-      {meetings.map(m => <EditableMeeting key={m.id} meeting={m} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>) }
+      {meetings.map(m => <EditableMeeting key={m.id} meeting={m} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
     </div>
   </section>
 }
@@ -1565,9 +1550,9 @@ function EditableSprint({sprint,patchSprint,deleteSprint,files,uploadGenericFile
   const [expanded,setExpanded]=useState(false);
   const [draft,setDraft]=useState({...sprint});
   async function save(){ await patchSprint(sprint.id, draft); setEditing(false); setExpanded(true); }
-  return <div className="taskCard">
-    <div className="row clickable" onClick={()=>!editing && setExpanded(!expanded)}><strong>{sprint.name}</strong><span className="badge">{sprint.status}</span></div>
-    {(expanded || editing) && <>
+  return <div className="taskCard compactTask">
+    <div className="row clickable" onClick={()=>setExpanded(!expanded)}><strong>{sprint.name}</strong><span className="badge">{sprint.status}</span></div>
+    {expanded && <>
       {!editing ? <>
         <p>{sprint.goal}</p><p className="muted">{sprint.start_date} to {sprint.end_date} · Capacity {sprint.capacity_points}</p>
       </> : <div className="form">
@@ -1606,12 +1591,12 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
     setExpanded(true);
   }
 
-  return <div className="taskCard">
-    <div className="row clickable" onClick={()=>!editing && setExpanded(!expanded)}>
+  return <div className="taskCard compactTask">
+    <div className="row clickable" onClick={()=>setExpanded(!expanded)}>
       <strong>{meeting.title}</strong>
-      <span className="badge">{meeting.meeting_date || "No date"}</span>
+      <span className="badge">{meeting.meeting_type}</span>
     </div>
-    {(expanded || editing) && <>
+    {expanded && <>
       {!editing ? <>
         <p className="muted">{meeting.meeting_type} · {meeting.meeting_date}</p>
         <p><b>Participants:</b> {meeting.participants || "-"}</p>
@@ -1643,7 +1628,6 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
     </>}
   </div>
 }
-
 
 function Gantt({tasks,sprints=[]}) {
   const weeks = buildGanttWeeks();
@@ -1923,12 +1907,9 @@ function EditableInfoItem({item,patchInfoItem,deleteInfoItem,nameOf,files,upload
     setEditing(false);
     setExpanded(true);
   }
-  return <div className="taskCard">
-    <div className="row clickable" onClick={()=>!editing && setExpanded(!expanded)}>
-      <strong>{item.title}</strong>
-      <span className="badge">Info</span>
-    </div>
-    {(expanded || editing) && <>
+  return <div className="taskCard compactTask">
+    <div className="row clickable" onClick={()=>setExpanded(!expanded)}><strong>{item.title}</strong><span className="badge">Info</span></div>
+    {expanded && <>
       {!editing ? <>
         <p>{item.description}</p>
         {item.link_url && <a href={item.link_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> Open link</a>}
@@ -1949,7 +1930,6 @@ function EditableInfoItem({item,patchInfoItem,deleteInfoItem,nameOf,files,upload
     </>}
   </div>
 }
-
 
 function FeedbackBoard({items,form,setForm,addFeedbackItem,patchFeedbackItem,deleteFeedbackItem,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
   return <section className="grid two">
@@ -2194,7 +2174,7 @@ function FileBox({title,files,onUpload,onDelete}) {
 }
 
 function OrderForm({form,setForm,profiles,submit}){return <form className="form" onSubmit={submit}><input placeholder="What needs to be ordered?" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Supplier / Shop" value={form.shop} onChange={e=>setForm({...form,shop:e.target.value})}/><input placeholder="Sell link" value={form.supplier_link} onChange={e=>setForm({...form,supplier_link:e.target.value})}/><input placeholder="Quantity" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/><input placeholder="Price" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/><input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><button className="primary"><Package size={18}/> Add Order</button></form>}
-
+function ScheduleForm({form,setForm,tasks,submit}){return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select value={form.task_id} onChange={e=>setForm({...form,task_id:e.target.value})}><option value="">No task</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><textarea placeholder="Notes" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><select value={form.visibility || "private"} onChange={e=>setForm({...form,visibility:e.target.value})}><option value="private">Private Appointment</option><option value="group">Group Appointment</option></select><button className="primary"><CalendarDays size={18}/> Add</button></form>}
 function SprintForm({form,setForm,submit}){return <form className="form" onSubmit={submit}><input placeholder="Sprint name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Sprint Goal" value={form.goal} onChange={e=>setForm({...form,goal:e.target.value})}/><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><input type="number" placeholder="Story point capacity" value={form.capacity_points} onChange={e=>setForm({...form,capacity_points:Number(e.target.value)})}/><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{["Planned","Active","Completed"].map(s=><option key={s}>{s}</option>)}</select><button className="primary"><Rocket size={18}/> Save sprint</button></form>}
 function MeetingForm({form,setForm,sprints,submit}){return <form className="form" onSubmit={submit}><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value})}><option value="">No sprint</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select value={form.meeting_type} onChange={e=>setForm({...form,meeting_type:e.target.value})}>{meetingTypes.map(t=><option key={t}>{t}</option>)}</select><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><input type="date" value={form.meeting_date} onChange={e=>setForm({...form,meeting_date:e.target.value})}/><textarea placeholder="Partnehmer" value={form.participants} onChange={e=>setForm({...form,participants:e.target.value})}/><textarea placeholder="Decisions" value={form.decisions} onChange={e=>setForm({...form,decisions:e.target.value})}/><textarea placeholder="Open points" value={form.open_points} onChange={e=>setForm({...form,open_points:e.target.value})}/><textarea placeholder="Next Steps" value={form.next_steps} onChange={e=>setForm({...form,next_steps:e.target.value})}/><button className="primary"><FileText size={18}/> Save minutes</button></form>}
 createRoot(document.getElementById("root")).render(<App />);

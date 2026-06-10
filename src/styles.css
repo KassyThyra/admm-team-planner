@@ -1825,74 +1825,45 @@
   white-space: nowrap;
 }
 
-/* Orders: compact table, status colors, collapsible cards */
-.compactOrdersTable {
-  min-width: 720px;
-}
 
+/* Orders fixes: compact table, status colors, reusable shipping costs */
+.compactOrdersTable {
+  min-width: 760px;
+  font-size: 13px;
+}
 .compactOrdersTable th,
 .compactOrdersTable td {
   padding: 8px 10px;
-  vertical-align: middle;
 }
-
+.orderRow.needed td {
+  background: #fee2e2;
+}
+.orderRow.ordered td {
+  background: #dcfce7;
+}
+.orderRow.arrived td {
+  background: #f3f4f6;
+  color: #6b7280;
+}
 .tableStatusSelect {
-  min-width: 104px;
+  min-width: 108px;
   padding: 6px 8px;
   border-radius: 10px;
 }
-
-.compactPriceSummary {
-  margin: 6px 0 0;
-}
-
-.ordersTable tr.orderNeeded td {
-  background: #fee2e2;
-}
-
-.ordersTable tr.orderOrdered td {
-  background: #dcfce7;
-}
-
-.ordersTable tr.orderArrived td {
-  background: #f3f4f6;
-  color: #4b5563;
-}
-
-.orderCard.orderNeeded {
-  border-left: 6px solid #ef4444;
-}
-
-.orderCard.orderOrdered {
-  border-left: 6px solid #22c55e;
-}
-
-.orderCard.orderArrived {
-  border-left: 6px solid #9ca3af;
-  background: #f9fafb;
-}
-
-.badge.orderNeeded {
+.orderBadge.needed {
   background: #fee2e2;
   color: #991b1b;
 }
-
-.badge.orderOrdered {
+.orderBadge.ordered {
   background: #dcfce7;
   color: #166534;
 }
-
-.badge.orderArrived {
+.orderBadge.arrived {
   background: #e5e7eb;
   color: #374151;
 }
-
 .shippingCostList {
   display: grid;
   gap: 8px;
   margin-top: 10px;
-}
-
-.shippingCostList .fileRow span {
-  overflow-wrap: anywhere;
 }
