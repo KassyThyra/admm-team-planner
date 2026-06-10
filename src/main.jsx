@@ -305,7 +305,7 @@ function App() {
       priority: taskForm.priority, deadline: taskForm.deadline || null, points: Number(taskForm.points || 3),
       status: taskForm.status, backlog_status: taskForm.sprint_id ? "In Sprint" : "Planned", sprint_id: taskForm.sprint_id || null,
       done_definition: taskForm.done_definition, evidence: taskForm.evidence, planned_start: taskForm.planned_start || null,
-      planned_end: taskForm.planned_end || null, repeat_weekly: Boolean(taskForm.repeat_weekly), created_by: profile?.id
+      planned_end: null, repeat_weekly: Boolean(taskForm.repeat_weekly), created_by: profile?.id
     };
     const { data, error } = await supabase.from("tasks").insert(payload).select().single();
     if (error) { alert(error.message); return; }
@@ -720,7 +720,7 @@ function labelForTab(id) {
 }
 function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function taskEndDate(task) {
-  return task.planned_end || task.deadline || null;
+  return task.deadline || null;
 }
 function isDoneStatus(status) {
   return status === "Done" || status === "Erledigt";
@@ -803,7 +803,7 @@ function sprintPoints(tasks, sprintId) {
   return { done, total };
 }
 function getTaskRange(tasks) {
-  const dates = tasks.flatMap(t => [t.planned_start, t.planned_end || t.deadline]).filter(Boolean).sort();
+  const dates = tasks.flatMap(t => [t.planned_start, t.deadline]).filter(Boolean).sort();
   return { start: dates[0], end: dates[dates.length - 1] };
 }
 function localDateKey(value = new Date()) {
@@ -841,7 +841,7 @@ function dateToColumn(date, days) {
   return index >= 0 ? index + 2 : 2;
 }
 function taskDoneDateKey(task) {
-  const raw = task.done_at || task.completed_at || (isDoneStatus(task.status) ? task.updated_at : null);
+  const raw = task.done_at || task.completed_at || null;
   return raw ? localDateKey(raw) : null;
 }
 function diffDaysInclusive(start, end) {
@@ -852,15 +852,16 @@ function diffDaysInclusive(start, end) {
 function expandWeeklyTaskCalendarItems(tasks, buildItem) {
   return tasks.flatMap(task => {
     const start = task.planned_start || task.deadline;
+    const deadline = task.deadline || start;
     if (!start) return [];
-    const end = task.planned_end || task.deadline || start;
-    const durationDays = diffDaysInclusive(start, end);
-    if (!task.repeat_weekly) return [buildItem(task, start, end, `task-${task.id}`, false)];
-    const repeatUntil = task.planned_end || task.deadline || addDaysKey(start, 180);
+
+    if (!task.repeat_weekly) {
+      return [buildItem(task, start, deadline, `task-${task.id}`, false)];
+    }
+
     const items = [];
-    for (let occurrenceStart = start, index = 1; occurrenceStart <= repeatUntil && index <= 52; occurrenceStart = addDaysKey(occurrenceStart, 7), index += 1) {
-      const occurrenceEnd = addDaysKey(occurrenceStart, durationDays);
-      items.push(buildItem(task, occurrenceStart, occurrenceEnd, `task-${task.id}-weekly-${index}`, true));
+    for (let occurrenceStart = start, index = 1; occurrenceStart <= deadline && index <= 104; occurrenceStart = addDaysKey(occurrenceStart, 7), index += 1) {
+      items.push(buildItem(task, occurrenceStart, occurrenceStart, `task-${task.id}-weekly-${index}`, true));
     }
     return items;
   });
@@ -1005,7 +1006,8 @@ function BacklogTaskCard({task,profiles,sprints=[],allTasks=[],activeSprint,addT
     points: task.points || 3,
     deadline: task.deadline || "",
     planned_start: task.planned_start || "",
-    planned_end: task.planned_end || "",
+    planned_end: "",
+    repeat_weekly: Boolean(task.repeat_weekly),
     done_definition: task.done_definition || "",
     evidence: task.evidence || "",
     sprint_id: task.sprint_id || "",
@@ -1041,7 +1043,7 @@ function BacklogTaskCard({task,profiles,sprints=[],allTasks=[],activeSprint,addT
       points: Number(draft.points || 3),
       deadline: draft.deadline || null,
       planned_start: draft.planned_start || null,
-      planned_end: draft.planned_end || null,
+      planned_end: null,
       done_definition: draft.done_definition,
       evidence: draft.evidence,
       repeat_weekly: Boolean(draft.repeat_weekly),
@@ -1061,7 +1063,7 @@ function BacklogTaskCard({task,profiles,sprints=[],allTasks=[],activeSprint,addT
     </div>
     {open && !editing && <>
       <p>{task.description || "No description."}</p>
-      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline || "open"} · Period {task.planned_start || "open"} → {task.planned_end || task.deadline || "open"}</p>
+      <p className="muted">{task.discipline} · {task.work_type} · Start {task.planned_start || "open"} · Deadline {task.deadline || "open"}{task.repeat_weekly ? " · weekly" : ""}</p>
       <p className="muted">Location: {task.sprint_id ? (sprints.find(s=>s.id===task.sprint_id)?.name || "Sprint") : "Backlog"}</p>
       <p><b>Definition of Done:</b> {task.done_definition || "-"}</p>
       <p><b>Evidence:</b> {task.evidence || "-"}</p>
@@ -1095,8 +1097,8 @@ function BacklogTaskCard({task,profiles,sprints=[],allTasks=[],activeSprint,addT
         <option value="">Backlog</option>
         {sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
       </select>
-      <div className="formRow"><input type="date" value={draft.planned_start || ""} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/><input type="date" value={draft.planned_end || ""} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/></div>
-      <input type="date" value={draft.deadline || ""} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
+      <div className="formRow"><label>Start<input type="date" value={draft.planned_start || ""} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/></label><label>Deadline<input type="date" value={draft.deadline || ""} onChange={e=>setDraft({...draft,deadline:e.target.value})}/></label></div>
+      <label className="checkInline"><input type="checkbox" checked={Boolean(draft.repeat_weekly)} onChange={e=>setDraft({...draft,repeat_weekly:e.target.checked})}/> Repeat weekly</label>
       <textarea placeholder="Definition of Done" value={draft.done_definition || ""} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
       <textarea placeholder="Evidence / Review notes" value={draft.evidence || ""} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
       <label>Dependencies</label>
@@ -2115,7 +2117,7 @@ function RiskItem({risk,patchRisk,deleteRisk,nameOf}) {
 
 function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
   function toggle(listName,id){const exists=form[listName].includes(id); setForm({...form,[listName]:exists?form[listName].filter(x=>x!==id):[...form[listName],id]})}
-  return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Main owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Additional owners</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/><input type="date" value={form.planned_end} onChange={e=>setForm({...form,planned_end:e.target.value})}/></div><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Dependencies</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><label className="checkInline"><input type="checkbox" checked={Boolean(form.repeat_weekly)} onChange={e=>setForm({...form,repeat_weekly:e.target.checked})}/> Repeat weekly</label><button className="primary"><Plus size={18}/> Create task</button></form>
+  return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Main owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Additional owners</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><label>Start<input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/></label><label>Deadline<input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></label></div><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Dependencies</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><label className="checkInline"><input type="checkbox" checked={Boolean(form.repeat_weekly)} onChange={e=>setForm({...form,repeat_weekly:e.target.checked})}/> Repeat weekly</label><button className="primary"><Plus size={18}/> Create task</button></form>
 }
 
 function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,deleteTaskFile,removeTaskFromSprint,sprints=[],allTasks=[],replaceTaskDependencies}) {
@@ -2133,7 +2135,8 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
     deadline: task.deadline || "",
     points: task.points || 3,
     planned_start: task.planned_start || "",
-    planned_end: task.planned_end || "",
+    planned_end: "",
+    repeat_weekly: Boolean(task.repeat_weekly),
     done_definition: task.done_definition || "",
     evidence: task.evidence || "",
     sprint_id: task.sprint_id || "",
@@ -2156,7 +2159,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
       deadline: draft.deadline || null,
       points: Number(draft.points || 3),
       planned_start: draft.planned_start || null,
-      planned_end: draft.planned_end || null,
+      planned_end: null,
       done_definition: draft.done_definition,
       evidence: draft.evidence,
       repeat_weekly: Boolean(draft.repeat_weekly),
@@ -2170,7 +2173,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
   return <div className={task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done"?"taskCard overdue":"taskCard"}>
     <div className="row clickable" onClick={()=>setOpen(!open)}><strong>{task.title}</strong><span className="badge">{task.priority} · {task.points} SP</span></div>
     {open && !editing && <>
-      <p className="muted">{task.discipline} · {task.work_type} · Deadline {task.deadline||"open"}</p>
+      <p className="muted">{task.discipline} · {task.work_type} · Start {task.planned_start || "open"} · Deadline {task.deadline||"open"}</p>
       <p className="muted">Location: {task.sprint_id ? (sprints.find(s=>s.id===task.sprint_id)?.name || "Sprint") : "Backlog"}</p>
       <p className="muted">Owner: {taskAssignees.map(p=>p.display_name).join(", ")||nameOf(task.owner_id)}</p>
       {task.repeat_weekly && <p className="muted">Repeats weekly</p>}
@@ -2190,8 +2193,7 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
         <option value="">Backlog</option>
         {sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
       </select>
-      <div className="formRow"><input type="date" value={draft.planned_start} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/><input type="date" value={draft.planned_end} onChange={e=>setDraft({...draft,planned_end:e.target.value})}/></div>
-      <input type="date" value={draft.deadline} onChange={e=>setDraft({...draft,deadline:e.target.value})}/>
+      <div className="formRow"><label>Start<input type="date" value={draft.planned_start} onChange={e=>setDraft({...draft,planned_start:e.target.value})}/></label><label>Deadline<input type="date" value={draft.deadline} onChange={e=>setDraft({...draft,deadline:e.target.value})}/></label></div>
       <label className="checkInline"><input type="checkbox" checked={Boolean(draft.repeat_weekly)} onChange={e=>setDraft({...draft,repeat_weekly:e.target.checked})}/> Repeat weekly</label>
       <textarea placeholder="Definition of Done" value={draft.done_definition} onChange={e=>setDraft({...draft,done_definition:e.target.value})}/>
       <textarea placeholder="Evidence / Review notes" value={draft.evidence} onChange={e=>setDraft({...draft,evidence:e.target.value})}/>
