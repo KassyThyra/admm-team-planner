@@ -1094,7 +1094,6 @@ function BurndownChart({sprint,tasks}) {
         <polyline points={stepPoints.join(" ")} fill="none" stroke="#111827" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
         {data.filter(item => item.doneToday > 0).map(item => <g key={`done-${item.day}`}>
           <circle cx={xForDay(item.day)} cy={yForPoints(item.remaining)} r="6" fill="#111827"/>
-          <text x={xForDay(item.day)} y={yForPoints(item.remaining) - 12} style={{fontSize: 13, fill: "#111827", fontWeight: 900}} textAnchor="middle">-{item.doneToday}</text>
         </g>)}
         <text x={(chart.left + chart.right) / 2} y="410" style={axisText} textAnchor="middle">Sprint days</text>
         <text x="22" y={(chart.top + chart.bottom) / 2} style={axisText} textAnchor="middle" transform={`rotate(-90 22 ${(chart.top + chart.bottom) / 2})`}>Story points remaining</text>
