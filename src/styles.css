@@ -1768,3 +1768,121 @@
   background: #e5e7eb;
   color: #374151;
 }
+
+/* Orders + collapsible details updates */
+.stackedSummary {
+  display: grid;
+  gap: 8px;
+}
+.stackedSummary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ordersTable tbody tr.orderRowNeeded td,
+.itemCard.orderRowNeeded {
+  background: #fee2e2;
+}
+.ordersTable tbody tr.orderRowOrdered td,
+.itemCard.orderRowOrdered {
+  background: #dcfce7;
+}
+.ordersTable tbody tr.orderRowArrived td,
+.itemCard.orderRowArrived {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.ordersTable select {
+  min-width: 110px;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+.collapsibleCard {
+  display: grid;
+  gap: 10px;
+}
+.collapseHeader {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font-weight: 900;
+}
+.collapseHeader:hover {
+  opacity: 0.8;
+}
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* Orders: compact table, status colors, collapsible cards */
+.compactOrdersTable {
+  min-width: 720px;
+}
+
+.compactOrdersTable th,
+.compactOrdersTable td {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.tableStatusSelect {
+  min-width: 104px;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+.compactPriceSummary {
+  margin: 6px 0 0;
+}
+
+.ordersTable tr.orderNeeded td {
+  background: #fee2e2;
+}
+
+.ordersTable tr.orderOrdered td {
+  background: #dcfce7;
+}
+
+.ordersTable tr.orderArrived td {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.orderCard.orderNeeded {
+  border-left: 6px solid #ef4444;
+}
+
+.orderCard.orderOrdered {
+  border-left: 6px solid #22c55e;
+}
+
+.orderCard.orderArrived {
+  border-left: 6px solid #9ca3af;
+  background: #f9fafb;
+}
+
+.badge.orderNeeded {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge.orderOrdered {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge.orderArrived {
+  background: #e5e7eb;
+  color: #374151;
+}
