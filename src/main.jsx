@@ -55,7 +55,7 @@ const roleAreaMap = {
 function roleToArea(role) { return roleAreaMap[role] || "Project Management"; }
 function roleToIsPm(role) { return role === "Project Manager"; }
 const workTypes = ["Organization", "Ordering", "Testing", "Manufacturing / Build", "Research", "Documentation", "Integration", "Meeting / Alignment", "Troubleshooting", "Design / Construction", "Review / Approval"];
-const orderStatus = ["Needed", "Ordered", "Shipped", "Arrived"];
+const orderStatus = ["Needed", "Ordered", "Arrived"];
 const meetingTypes = ["Sprint Planning", "Weekly", "Sprint Review", "Retrospective", "Extra Meeting"];
 const riskStatusOptions = ["Critical", "Future", "Resolved"];
 const levelRules = [
@@ -720,18 +720,19 @@ function formatEuro(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" }).format(value || 0);
 }
 function downloadOrdersCsv(orders, nameOf) {
-  const header = ["Part", "Description", "Supplier / Shop", "Order number", "Quantity", "Unit price", "Total price", "Status", "Owner", "Link"];
+  const header = ["Part", "Description", "Supplier / Shop", "Quantity", "Unit price", "Shipping cost", "Total price", "Status", "Owner", "Link"];
   const rows = orders.map(o => {
     const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
     const unitPrice = parsePriceValue(o.price);
+    const shippingCost = parsePriceValue(o.shipping_cost);
     return [
       o.name || "",
       o.description || "",
       o.shop || "",
-      o.order_number || "",
       o.quantity || "1",
       o.price || "",
-      formatEuro(unitPrice * quantity),
+      o.shipping_cost || "",
+      formatEuro(unitPrice * quantity + shippingCost),
       o.status || "",
       nameOf(o.owner_id),
       o.supplier_link || ""
@@ -819,7 +820,7 @@ function canMoveTask(task, newStatus, profile, taskAssignees, deps) {
 
 function emptyTask(){return{title:"",description:"",owner_id:"",assignee_ids:[],dependency_ids:[],discipline:"Software",work_type:"Organization",priority:"P3",deadline:"",points:3,status:"Backlog",sprint_id:"",done_definition:"",evidence:"",planned_start:"",planned_end:""}}
 function emptySprint(){return{name:"",goal:"",start_date:"",end_date:"",status:"Planned",capacity_points:0}}
-function emptyOrder(){return{name:"",description:"",shop:"",order_number:"",quantity:"1",price:"",supplier_link:"",owner_id:"",location:"",status:"Needed"}}
+function emptyOrder(){return{name:"",description:"",shop:"",quantity:"1",price:"",shipping_cost:"",supplier_link:"",owner_id:"",location:"",status:"Needed"}}
 function emptyBlocker(){return{question:"",tried:"",needed_from:""}}
 function emptySchedule(){return{title:"",task_id:"",start_date:new Date().toISOString().slice(0,10),end_date:"",notes:"",visibility:"private"}}
 function emptyMeeting(){return{sprint_id:"",meeting_type:"Weekly",title:"",meeting_date:new Date().toISOString().slice(0,10),participants:"",decisions:"",open_points:"",next_steps:""}}
@@ -1317,18 +1318,42 @@ function MyCalendar({tasks,schedule,meetings,form,setForm,addSchedule,deleteSche
   </section>
 }
 
+function orderStatusRank(status) {
+  const normalized = String(status || "Needed").toLowerCase();
+  if (normalized === "needed") return 0;
+  if (normalized === "ordered") return 1;
+  if (normalized === "arrived") return 2;
+  return 3;
+}
+
+function orderStatusClass(status) {
+  const normalized = String(status || "Needed").toLowerCase();
+  if (normalized === "needed") return "orderRowNeeded";
+  if (normalized === "ordered") return "orderRowOrdered";
+  if (normalized === "arrived") return "orderRowArrived";
+  return "";
+}
+
 function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,nameOf,filesOfRecord,uploadGenericFile,deleteGenericFile}) {
-  const totalPrice = orders.reduce((sum,o)=>{
+  const sortedOrders = [...orders].sort((a,b) => {
+    const rankCompare = orderStatusRank(a.status) - orderStatusRank(b.status);
+    if (rankCompare !== 0) return rankCompare;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+  const subtotal = sortedOrders.reduce((sum,o)=>{
     const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
     return sum + parsePriceValue(o.price) * quantity;
   }, 0);
+  const shippingTotal = sortedOrders.reduce((sum,o)=>sum + parsePriceValue(o.shipping_cost), 0);
+  const totalPrice = subtotal + shippingTotal;
 
   return <section className="grid two">
     <Card title="Add Order">
       <OrderForm form={form} setForm={setForm} profiles={profiles} submit={addOrder}/>
-      <div className="priceSummary">
-        <strong>Total price of all orders</strong>
-        <span>{formatEuro(totalPrice)}</span>
+      <div className="priceSummary stackedSummary">
+        <div><strong>Order subtotal</strong><span>{formatEuro(subtotal)}</span></div>
+        <div><strong>Shipping costs</strong><span>{formatEuro(shippingTotal)}</span></div>
+        <div><strong>Total costs</strong><span>{formatEuro(totalPrice)}</span></div>
       </div>
     </Card>
     <div className="taskList">
@@ -1339,6 +1364,7 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
               <th>Part</th>
               <th>Quantity</th>
               <th>Unit price</th>
+              <th>Shipping</th>
               <th>Total</th>
               <th>Status</th>
               <th>Sell link</th>
@@ -1347,15 +1373,21 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
             </tr>
           </thead>
           <tbody>
-            {orders.map(o => {
+            {sortedOrders.map(o => {
               const quantity = Number.parseFloat(String(o.quantity || "1").replace(",", ".")) || 1;
               const unitPrice = parsePriceValue(o.price);
-              return <tr key={o.id}>
+              const shippingCost = parsePriceValue(o.shipping_cost);
+              return <tr key={o.id} className={orderStatusClass(o.status)}>
                 <td>{o.name || "Ordering"}</td>
                 <td>{o.quantity || "1"}</td>
                 <td>{formatEuro(unitPrice)}</td>
-                <td>{formatEuro(unitPrice * quantity)}</td>
-                <td>{o.status}</td>
+                <td>{formatEuro(shippingCost)}</td>
+                <td>{formatEuro(unitPrice * quantity + shippingCost)}</td>
+                <td>
+                  <select value={o.status || "Needed"} onChange={e=>patchOrder(o.id,{status:e.target.value})}>
+                    {orderStatus.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </td>
                 <td>{o.supplier_link ? <a href={o.supplier_link} target="_blank" rel="noreferrer">Open</a> : "-"}</td>
                 <td>{nameOf(o.owner_id)}</td>
                 <td>{o.location || "-"}</td>
@@ -1364,51 +1396,61 @@ function Orders({orders,profiles,form,setForm,addOrder,patchOrder,deleteOrder,na
           </tbody>
         </table>
       </div>
-      {orders.map(o => <EditableOrder key={o.id} order={o} profiles={profiles} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} files={filesOfRecord("order", o.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
+      {sortedOrders.map(o => <EditableOrder key={o.id} order={o} profiles={profiles} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} files={filesOfRecord("order", o.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>) }
     </div>
   </section>
 }
 function EditableOrder({order,profiles,patchOrder,deleteOrder,nameOf,files,uploadGenericFile,deleteGenericFile}) {
+  const [open,setOpen]=useState(false);
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...order});
+  const quantity = Number.parseFloat(String(order.quantity || "1").replace(",", ".")) || 1;
+  const unitPrice = parsePriceValue(order.price);
+  const shippingCost = parsePriceValue(order.shipping_cost);
   async function save() {
     await patchOrder(order.id, {
       name: draft.name || draft.item || "",
       description: draft.description || "",
       shop: draft.shop || "",
-      order_number: draft.order_number || "",
       quantity: draft.quantity || "1",
       price: draft.price || "",
+      shipping_cost: draft.shipping_cost || "",
       supplier_link: draft.supplier_link || "",
       owner_id: draft.owner_id || null,
       location: draft.location || "",
       status: draft.status || "Needed"
     });
     setEditing(false);
+    setOpen(true);
   }
-  return <div className="itemCard">
-    {!editing ? <>
-      <div className="row"><strong>{order.name || order.item || "Ordering"}</strong><span className="badge">{order.status}</span></div>
-      <p>{order.description}</p>
-      <p className="muted">{order.shop} · {order.order_number} · Quantity {order.quantity || "1"} · Unit price {order.price || "-"} · Total {formatEuro(parsePriceValue(order.price) * (Number.parseFloat(String(order.quantity || "1").replace(",", ".")) || 1))} · Owner: {nameOf(order.owner_id)} · Location: {order.location || "-"}</p>
-      {order.supplier_link&&<a href={order.supplier_link} target="_blank" rel="noreferrer">Open link</a>}
-    </> : <div className="form">
-      <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="What needs to be ordered?"/>
-      <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Description"/>
-      <input value={draft.shop || ""} onChange={e=>setDraft({...draft,shop:e.target.value})} placeholder="Supplier / Shop"/>
-      <input value={draft.order_number || ""} onChange={e=>setDraft({...draft,order_number:e.target.value})} placeholder="Order number"/>
-      <input value={draft.supplier_link || ""} onChange={e=>setDraft({...draft,supplier_link:e.target.value})} placeholder="Link"/>
-      <div className="formRow"><input value={draft.quantity || ""} onChange={e=>setDraft({...draft,quantity:e.target.value})} placeholder="Quantity"/><input value={draft.price || ""} onChange={e=>setDraft({...draft,price:e.target.value})} placeholder="Price"/></div>
-      <input value={draft.location || ""} onChange={e=>setDraft({...draft,location:e.target.value})} placeholder="Location"/>
-      <select value={draft.owner_id || ""} onChange={e=>setDraft({...draft,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
-      <select value={draft.status || "Needed"} onChange={e=>setDraft({...draft,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
-    </div>}
-    <FileBox title="Files for order" files={files} onUpload={file=>uploadGenericFile("order", order.id, file)} onDelete={deleteGenericFile}/>
-    <div className="buttonRow">
-      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></>}
-      <select value={order.status} onChange={e=>patchOrder(order.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
-      <button className="iconBtn" onClick={()=>deleteOrder(order.id)} title="Delete order"><Trash2 size={16}/></button>
-    </div>
+  return <div className={`itemCard collapsibleCard ${orderStatusClass(order.status)}`}>
+    <button className="collapseHeader" type="button" onClick={()=>setOpen(!open)}>
+      <strong>{order.name || order.item || "Ordering"}</strong>
+      <span className="rowActions"><span className="badge">{order.status || "Needed"}</span><span>{open ? "Hide" : "Show"}</span></span>
+    </button>
+    {open && <>
+      {!editing ? <>
+        <p>{order.description}</p>
+        <p className="muted">{order.shop || "No supplier"} · Quantity {order.quantity || "1"} · Unit price {order.price || "-"} · Shipping {formatEuro(shippingCost)} · Total {formatEuro(unitPrice * quantity + shippingCost)} · Owner: {nameOf(order.owner_id)} · Location: {order.location || "-"}</p>
+        {order.supplier_link&&<a href={order.supplier_link} target="_blank" rel="noreferrer">Open link</a>}
+      </> : <div className="form">
+        <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="What needs to be ordered?"/>
+        <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})} placeholder="Description"/>
+        <input value={draft.shop || ""} onChange={e=>setDraft({...draft,shop:e.target.value})} placeholder="Supplier / Shop"/>
+        <input value={draft.supplier_link || ""} onChange={e=>setDraft({...draft,supplier_link:e.target.value})} placeholder="Sell link"/>
+        <div className="formRow"><input value={draft.quantity || ""} onChange={e=>setDraft({...draft,quantity:e.target.value})} placeholder="Quantity"/><input value={draft.price || ""} onChange={e=>setDraft({...draft,price:e.target.value})} placeholder="Unit price"/></div>
+        <input value={draft.shipping_cost || ""} onChange={e=>setDraft({...draft,shipping_cost:e.target.value})} placeholder="Shipping cost"/>
+        <input value={draft.location || ""} onChange={e=>setDraft({...draft,location:e.target.value})} placeholder="Location"/>
+        <select value={draft.owner_id || ""} onChange={e=>setDraft({...draft,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
+        <select value={draft.status || "Needed"} onChange={e=>setDraft({...draft,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+      </div>}
+      <FileBox title="Files for order" files={files} onUpload={file=>uploadGenericFile("order", order.id, file)} onDelete={deleteGenericFile}/>
+      <div className="buttonRow">
+        {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></>}
+        <select value={order.status || "Needed"} onChange={e=>patchOrder(order.id,{status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+        <button className="iconBtn" onClick={()=>deleteOrder(order.id)} title="Delete order"><Trash2 size={16}/></button>
+      </div>
+    </>}
   </div>
 }
 
@@ -1471,36 +1513,43 @@ function Meetings({sprints,sprintForm,setSprintForm,addSprint,patchSprint,delete
     <div className="stack"><Card title="Create Sprint"><SprintForm form={sprintForm} setForm={setSprintForm} submit={addSprint}/></Card><Card title="Meeting"><MeetingForm form={meetingForm} setForm={setMeetingForm} sprints={sprints} submit={addMeeting}/></Card></div>
     <div className="stack">
       <h2>Sprints</h2>
-      {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
+      {sprints.map(s => <EditableSprint key={s.id} sprint={s} patchSprint={patchSprint} deleteSprint={deleteSprint} files={filesOfRecord("sprint", s.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>) }
       <h2>Meetings</h2>
-      {meetings.map(m => <EditableMeeting key={m.id} meeting={m} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>)}
+      {meetings.map(m => <EditableMeeting key={m.id} meeting={m} patchMeeting={patchMeeting} deleteMeeting={deleteMeeting} files={filesOfRecord("meeting", m.id)} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile}/>) }
     </div>
   </section>
 }
 function EditableSprint({sprint,patchSprint,deleteSprint,files,uploadGenericFile,deleteGenericFile}) {
+  const [open,setOpen]=useState(false);
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...sprint});
-  async function save(){ await patchSprint(sprint.id, draft); setEditing(false); }
-  return <div className="itemCard">
-    {!editing ? <>
-      <div className="row"><strong>{sprint.name}</strong><span className="badge">{sprint.status}</span></div>
-      <p>{sprint.goal}</p><p className="muted">{sprint.start_date} to {sprint.end_date} · Capacity {sprint.capacity_points}</p>
-    </> : <div className="form">
-      <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})}/>
-      <textarea value={draft.goal || ""} onChange={e=>setDraft({...draft,goal:e.target.value})}/>
-      <div className="formRow"><input type="date" value={draft.start_date || ""} onChange={e=>setDraft({...draft,start_date:e.target.value})}/><input type="date" value={draft.end_date || ""} onChange={e=>setDraft({...draft,end_date:e.target.value})}/></div>
-      <input type="number" value={draft.capacity_points || 0} onChange={e=>setDraft({...draft,capacity_points:Number(e.target.value)})}/>
-      <select value={draft.status || "Planned"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Planned","Active","Completed"].map(x=><option key={x}>{x}</option>)}</select>
-    </div>}
-    <FileBox title="Files for sprint" files={files} onUpload={file=>uploadGenericFile("sprint", sprint.id, file)} onDelete={deleteGenericFile}/>
-    <div className="buttonRow">
-      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></>}
-      <select value={sprint.status} onChange={e=>patchSprint(sprint.id,{status:e.target.value})}>{["Planned","Active","Completed"].map(x=><option key={x}>{x}</option>)}</select>
-      <button className="iconBtn" onClick={()=>deleteSprint(sprint.id)}><Trash2 size={16}/></button>
-    </div>
+  async function save(){ await patchSprint(sprint.id, draft); setEditing(false); setOpen(true); }
+  return <div className="itemCard collapsibleCard">
+    <button className="collapseHeader" type="button" onClick={()=>setOpen(!open)}>
+      <strong>{sprint.name}</strong>
+      <span className="rowActions"><span className="badge">{sprint.status}</span><span>{open ? "Hide" : "Show"}</span></span>
+    </button>
+    {open && <>
+      {!editing ? <>
+        <p>{sprint.goal}</p><p className="muted">{sprint.start_date} to {sprint.end_date} · Capacity {sprint.capacity_points}</p>
+      </> : <div className="form">
+        <input value={draft.name || ""} onChange={e=>setDraft({...draft,name:e.target.value})}/>
+        <textarea value={draft.goal || ""} onChange={e=>setDraft({...draft,goal:e.target.value})}/>
+        <div className="formRow"><input type="date" value={draft.start_date || ""} onChange={e=>setDraft({...draft,start_date:e.target.value})}/><input type="date" value={draft.end_date || ""} onChange={e=>setDraft({...draft,end_date:e.target.value})}/></div>
+        <input type="number" value={draft.capacity_points || 0} onChange={e=>setDraft({...draft,capacity_points:Number(e.target.value)})}/>
+        <select value={draft.status || "Planned"} onChange={e=>setDraft({...draft,status:e.target.value})}>{["Planned","Active","Completed"].map(x=><option key={x}>{x}</option>)}</select>
+      </div>}
+      <FileBox title="Files for sprint" files={files} onUpload={file=>uploadGenericFile("sprint", sprint.id, file)} onDelete={deleteGenericFile}/>
+      <div className="buttonRow">
+        {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <><button className="primary" onClick={save}>Save</button><button className="secondary" onClick={()=>setEditing(false)}>Cancel</button></>}
+        <select value={sprint.status} onChange={e=>patchSprint(sprint.id,{status:e.target.value})}>{["Planned","Active","Completed"].map(x=><option key={x}>{x}</option>)}</select>
+        <button className="iconBtn" onClick={()=>deleteSprint(sprint.id)}><Trash2 size={16}/></button>
+      </div>
+    </>}
   </div>
 }
 function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGenericFile,deleteGenericFile}) {
+  const [open,setOpen] = useState(false);
   const [editing,setEditing] = useState(false);
   const [draft,setDraft] = useState({...meeting});
 
@@ -1516,42 +1565,46 @@ function EditableMeeting({meeting,patchMeeting,deleteMeeting,files,uploadGeneric
       next_steps: draft.next_steps || ""
     });
     setEditing(false);
+    setOpen(true);
   }
 
-  return <div className="itemCard">
-    {!editing ? <>
-      <div className="row">
-        <strong>{meeting.title}</strong>
+  return <div className="itemCard collapsibleCard">
+    <button className="collapseHeader" type="button" onClick={()=>setOpen(!open)}>
+      <strong>{meeting.title}</strong>
+      <span className="rowActions"><span className="badge">{meeting.meeting_type}</span><span>{open ? "Hide" : "Show"}</span></span>
+    </button>
+    {open && <>
+      {!editing ? <>
+        <p className="muted">{meeting.meeting_type} · {meeting.meeting_date}</p>
+        <p><b>Participants:</b> {meeting.participants || "-"}</p>
+        <p><b>Decisions:</b> {meeting.decisions || "-"}</p>
+        <p><b>Open:</b> {meeting.open_points || "-"}</p>
+        <p><b>Next Steps:</b> {meeting.next_steps || "-"}</p>
+      </> : <div className="form">
+        <select value={draft.meeting_type || "Weekly"} onChange={e=>setDraft({...draft,meeting_type:e.target.value})}>
+          {meetingTypes.map(t=><option key={t}>{t}</option>)}
+        </select>
+        <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Title"/>
+        <input type="date" value={draft.meeting_date || ""} onChange={e=>setDraft({...draft,meeting_date:e.target.value})}/>
+        <textarea value={draft.participants || ""} onChange={e=>setDraft({...draft,participants:e.target.value})} placeholder="Participants"/>
+        <textarea value={draft.decisions || ""} onChange={e=>setDraft({...draft,decisions:e.target.value})} placeholder="Decisions"/>
+        <textarea value={draft.open_points || ""} onChange={e=>setDraft({...draft,open_points:e.target.value})} placeholder="Open points"/>
+        <textarea value={draft.next_steps || ""} onChange={e=>setDraft({...draft,next_steps:e.target.value})} placeholder="Next Steps"/>
+      </div>}
+
+      <FileBox title="Files for meeting" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
+
+      <div className="buttonRow">
+        {!editing
+          ? <button className="secondary" type="button" onClick={()=>setEditing(true)}>Edit Meeting</button>
+          : <>
+              <button className="primary" type="button" onClick={save}>Save</button>
+              <button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button>
+            </>
+        }
         <button className="iconBtn" onClick={()=>deleteMeeting(meeting.id)} title="Delete meeting minutes"><Trash2 size={16}/></button>
       </div>
-      <p className="muted">{meeting.meeting_type} · {meeting.meeting_date}</p>
-      <p><b>Partnehmer:</b> {meeting.participants || "-"}</p>
-      <p><b>Decisions:</b> {meeting.decisions || "-"}</p>
-      <p><b>Open:</b> {meeting.open_points || "-"}</p>
-      <p><b>Next Steps:</b> {meeting.next_steps || "-"}</p>
-    </> : <div className="form">
-      <select value={draft.meeting_type || "Weekly"} onChange={e=>setDraft({...draft,meeting_type:e.target.value})}>
-        {meetingTypes.map(t=><option key={t}>{t}</option>)}
-      </select>
-      <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="Title"/>
-      <input type="date" value={draft.meeting_date || ""} onChange={e=>setDraft({...draft,meeting_date:e.target.value})}/>
-      <textarea value={draft.participants || ""} onChange={e=>setDraft({...draft,participants:e.target.value})} placeholder="Partnehmer"/>
-      <textarea value={draft.decisions || ""} onChange={e=>setDraft({...draft,decisions:e.target.value})} placeholder="Decisions"/>
-      <textarea value={draft.open_points || ""} onChange={e=>setDraft({...draft,open_points:e.target.value})} placeholder="Open points"/>
-      <textarea value={draft.next_steps || ""} onChange={e=>setDraft({...draft,next_steps:e.target.value})} placeholder="Next Steps"/>
-    </div>}
-
-    <FileBox title="Files for meeting" files={files} onUpload={file=>uploadGenericFile("meeting", meeting.id, file)} onDelete={deleteGenericFile}/>
-
-    <div className="buttonRow">
-      {!editing
-        ? <button className="secondary" type="button" onClick={()=>setEditing(true)}>Edit Meeting</button>
-        : <>
-            <button className="primary" type="button" onClick={save}>Save</button>
-            <button className="secondary" type="button" onClick={()=>setEditing(false)}>Cancel</button>
-          </>
-      }
-    </div>
+    </>}
   </div>
 }
 
@@ -1821,6 +1874,7 @@ function InfoBoard({items,form,setForm,addInfoItem,patchInfoItem,deleteInfoItem,
 }
 
 function EditableInfoItem({item,patchInfoItem,deleteInfoItem,nameOf,files,uploadGenericFile,deleteGenericFile}) {
+  const [open,setOpen]=useState(false);
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState({...item});
   async function save() {
@@ -1830,25 +1884,32 @@ function EditableInfoItem({item,patchInfoItem,deleteInfoItem,nameOf,files,upload
       link_url:draft.link_url || ""
     });
     setEditing(false);
+    setOpen(true);
   }
-  return <div className="itemCard">
-    {!editing ? <>
-      <div className="row"><strong>{item.title}</strong><button className="iconBtn" onClick={()=>deleteInfoItem(item.id)}><Trash2 size={16}/></button></div>
-      <p>{item.description}</p>
-      {item.link_url && <a href={item.link_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> Open link</a>}
-      <p className="muted">By {nameOf(item.created_by)}</p>
-    </> : <div className="form">
-      <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
-      <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})}/>
-      <input value={draft.link_url || ""} onChange={e=>setDraft({...draft,link_url:e.target.value})}/>
-    </div>}
-    <FileBox title="Files" files={files} onUpload={file=>uploadGenericFile("info", item.id, file)} onDelete={deleteGenericFile}/>
-    <div className="buttonRow">
-      {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <>
-        <button className="primary" onClick={save}>Save</button>
-        <button className="secondary" onClick={()=>setEditing(false)}>Cancel</button>
-      </>}
-    </div>
+  return <div className="itemCard collapsibleCard">
+    <button className="collapseHeader" type="button" onClick={()=>setOpen(!open)}>
+      <strong>{item.title}</strong>
+      <span>{open ? "Hide" : "Show"}</span>
+    </button>
+    {open && <>
+      {!editing ? <>
+        <p>{item.description}</p>
+        {item.link_url && <a href={item.link_url} target="_blank" rel="noreferrer"><LinkIcon size={14}/> Open link</a>}
+        <p className="muted">By {nameOf(item.created_by)}</p>
+      </> : <div className="form">
+        <input value={draft.title || ""} onChange={e=>setDraft({...draft,title:e.target.value})}/>
+        <textarea value={draft.description || ""} onChange={e=>setDraft({...draft,description:e.target.value})}/>
+        <input value={draft.link_url || ""} onChange={e=>setDraft({...draft,link_url:e.target.value})}/>
+      </div>}
+      <FileBox title="Files" files={files} onUpload={file=>uploadGenericFile("info", item.id, file)} onDelete={deleteGenericFile}/>
+      <div className="buttonRow">
+        {!editing ? <button className="secondary" onClick={()=>setEditing(true)}>Edit</button> : <>
+          <button className="primary" onClick={save}>Save</button>
+          <button className="secondary" onClick={()=>setEditing(false)}>Cancel</button>
+        </>}
+        <button className="iconBtn" onClick={()=>deleteInfoItem(item.id)}><Trash2 size={16}/></button>
+      </div>
+    </>}
   </div>
 }
 
@@ -2094,8 +2155,20 @@ function FileBox({title,files,onUpload,onDelete}) {
   </div>
 }
 
-function OrderForm({form,setForm,profiles,submit}){return <form className="form" onSubmit={submit}><input placeholder="What needs to be ordered?" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Supplier / Shop" value={form.shop} onChange={e=>setForm({...form,shop:e.target.value})}/><input placeholder="Order number" value={form.order_number} onChange={e=>setForm({...form,order_number:e.target.value})}/><input placeholder="Sell link" value={form.supplier_link} onChange={e=>setForm({...form,supplier_link:e.target.value})}/><input placeholder="Quantity" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/><input placeholder="Price" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/><input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><button className="primary"><Package size={18}/> Add Order</button></form>}
-function ScheduleForm({form,setForm,tasks,submit}){return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select value={form.task_id} onChange={e=>setForm({...form,task_id:e.target.value})}><option value="">No task</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><textarea placeholder="Notes" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><select value={form.visibility || "private"} onChange={e=>setForm({...form,visibility:e.target.value})}><option value="private">Private Appointment</option><option value="group">Group Appointment</option></select><button className="primary"><CalendarDays size={18}/> Add</button></form>}
+function OrderForm({form,setForm,profiles,submit}){return <form className="form" onSubmit={submit}>
+  <input placeholder="What needs to be ordered?" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+  <textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/>
+  <input placeholder="Supplier / Shop" value={form.shop} onChange={e=>setForm({...form,shop:e.target.value})}/>
+  <input placeholder="Sell link" value={form.supplier_link} onChange={e=>setForm({...form,supplier_link:e.target.value})}/>
+  <input placeholder="Quantity" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/>
+  <input placeholder="Unit price" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}/>
+  <input placeholder="Shipping cost" value={form.shipping_cost} onChange={e=>setForm({...form,shipping_cost:e.target.value})}/>
+  <input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/>
+  <select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
+  <select value={form.status || "Needed"} onChange={e=>setForm({...form,status:e.target.value})}>{orderStatus.map(s=><option key={s}>{s}</option>)}</select>
+  <button className="primary"><Package size={18}/> Add Order</button>
+</form>}
+
 function SprintForm({form,setForm,submit}){return <form className="form" onSubmit={submit}><input placeholder="Sprint name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea placeholder="Sprint Goal" value={form.goal} onChange={e=>setForm({...form,goal:e.target.value})}/><div className="formRow"><input type="date" value={form.start_date} onChange={e=>setForm({...form,start_date:e.target.value})}/><input type="date" value={form.end_date} onChange={e=>setForm({...form,end_date:e.target.value})}/></div><input type="number" placeholder="Story point capacity" value={form.capacity_points} onChange={e=>setForm({...form,capacity_points:Number(e.target.value)})}/><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{["Planned","Active","Completed"].map(s=><option key={s}>{s}</option>)}</select><button className="primary"><Rocket size={18}/> Save sprint</button></form>}
 function MeetingForm({form,setForm,sprints,submit}){return <form className="form" onSubmit={submit}><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value})}><option value="">No sprint</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select value={form.meeting_type} onChange={e=>setForm({...form,meeting_type:e.target.value})}>{meetingTypes.map(t=><option key={t}>{t}</option>)}</select><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><input type="date" value={form.meeting_date} onChange={e=>setForm({...form,meeting_date:e.target.value})}/><textarea placeholder="Partnehmer" value={form.participants} onChange={e=>setForm({...form,participants:e.target.value})}/><textarea placeholder="Decisions" value={form.decisions} onChange={e=>setForm({...form,decisions:e.target.value})}/><textarea placeholder="Open points" value={form.open_points} onChange={e=>setForm({...form,open_points:e.target.value})}/><textarea placeholder="Next Steps" value={form.next_steps} onChange={e=>setForm({...form,next_steps:e.target.value})}/><button className="primary"><FileText size={18}/> Save minutes</button></form>}
 createRoot(document.getElementById("root")).render(<App />);
