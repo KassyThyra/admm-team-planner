@@ -700,7 +700,7 @@ function App() {
       {tab === "backlog" && <Backlog tasks={backlogTasks} profiles={profiles} sprints={sprints} activeSprint={activeSprint} form={taskForm} setForm={setTaskForm} addTask={addTask} addTaskToSprint={addTaskToSprint} deleteTask={deleteTask} replaceTaskDependencies={replaceTaskDependencies} />}
       {tab === "sprint" && <SprintBoard sprints={sprints} activeSprint={selectedSprint} setSelectedSprintId={setSelectedSprintId} tasks={sprintTasks} allTasks={tasks} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={depsOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} removeTaskFromSprint={removeTaskFromSprint} replaceTaskDependencies={replaceTaskDependencies} />}
       {tab === "history" && <SprintHistory sprints={sprints} tasks={tasks} meetings={meetings} setSelectedSprintId={setSelectedSprintId} setTab={setTab} />}
-      {tab === "me" && <MyArea profile={profile} tasks={myTasks} schedule={mySchedule} meetings={meetings} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} replaceTaskDependencies={replaceTaskDependencies} />}
+      {tab === "me" && <MyArea profile={profile} activeSprint={activeSprint} tasks={myTasks} schedule={mySchedule} meetings={meetings} form={scheduleForm} setForm={setScheduleForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule} nameOf={nameOf} assigneesOf={assigneesOf} commentsOf={commentsOf} filesOf={filesOf} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} replaceTaskDependencies={replaceTaskDependencies} />}
       {tab === "calendar" && <TeamCalendar sprints={sprints} tasks={tasks} schedule={schedule} meetings={meetings} profiles={profiles} assigneesOf={assigneesOf} nameOf={nameOf} />}
       {tab === "orders" && <Orders orders={orders} profiles={profiles} form={orderForm} setForm={setOrderForm} addOrder={addOrder} patchOrder={patchOrder} deleteOrder={deleteOrder} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} shippingItems={orderShippingItems} shippingDraft={shippingDraft} setShippingDraft={setShippingDraft} addShippingCost={addOrderShippingCost} deleteShippingCost={deleteOrderShippingCost} />}
       {tab === "blockers" && <Blockers blockers={blockers} form={blockerForm} setForm={setBlockerForm} addBlocker={addBlocker} patchBlocker={patchBlocker} deleteBlocker={deleteBlocker} nameOf={nameOf} filesOfRecord={filesOfRecord} uploadGenericFile={uploadGenericFile} deleteGenericFile={deleteGenericFile} />}
@@ -1205,7 +1205,7 @@ function SprintHistory({sprints,tasks,meetings,setSelectedSprintId,setTab}) {
   </section>
 }
 
-function MyArea({profile,tasks,schedule,meetings,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,deleteTaskFile,replaceTaskDependencies}) {
+function MyArea({profile,activeSprint,tasks,schedule,meetings,form,setForm,addSchedule,deleteSchedule,nameOf,assigneesOf,commentsOf,filesOf,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,deleteTaskFile,replaceTaskDependencies}) {
   return <section className="grid two">
     <div className="stack">
       <MyCalendar tasks={tasks} schedule={schedule} meetings={meetings} form={form} setForm={setForm} addSchedule={addSchedule} deleteSchedule={deleteSchedule}/>
@@ -1223,7 +1223,10 @@ function MyArea({profile,tasks,schedule,meetings,form,setForm,addSchedule,delete
       <p className="muted">Tasks assigned to you as main owner or additional owner appear here.</p>
       <div className="taskList">
         {tasks.length === 0 && <p className="empty">No assigned tasks.</p>}
-        {tasks.map(t=><TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} allTasks={tasks} replaceTaskDependencies={replaceTaskDependencies}/>)}
+        {tasks.map(t => {
+          const highlightCurrentSprint = Boolean(activeSprint?.id && t.sprint_id === activeSprint.id && !isDoneStatus(t.status));
+          return <TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} allTasks={tasks} replaceTaskDependencies={replaceTaskDependencies} highlightCurrentSprint={highlightCurrentSprint}/>;
+        })}
       </div>
     </div>
   </section>
@@ -2120,7 +2123,7 @@ function TaskForm({form,setForm,profiles,sprints,allTasks,submit}) {
   return <form className="form" onSubmit={submit}><input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/><select value={form.owner_id} onChange={e=>setForm({...form,owner_id:e.target.value})}><option value="">Main owner</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select><label>Additional owners</label><div className="chips">{profiles.map(p=><button type="button" key={p.id} className={form.assignee_ids.includes(p.id)?"chip selected":"chip"} onClick={()=>toggle("assignee_ids",p.id)}>{p.display_name}</button>)}</div><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>{priorities.map(p=><option key={p}>{p}</option>)}</select><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})}>{disciplines.map(d=><option key={d}>{d}</option>)}</select><select value={form.work_type} onChange={e=>setForm({...form,work_type:e.target.value})}>{workTypes.map(w=><option key={w}>{w}</option>)}</select><select value={form.sprint_id} onChange={e=>setForm({...form,sprint_id:e.target.value,status:e.target.value?"To Do":"Backlog"})}><option value="">Backlog</option>{sprints.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><div className="formRow"><label>Start<input type="date" value={form.planned_start} onChange={e=>setForm({...form,planned_start:e.target.value})}/></label><label>Deadline<input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></label></div><select value={form.points} onChange={e=>setForm({...form,points:Number(e.target.value)})}>{storyPointOptions.map(p=><option key={p} value={p}>{p} SP</option>)}</select><textarea placeholder="Definition of Done" value={form.done_definition} onChange={e=>setForm({...form,done_definition:e.target.value})}/><label>Dependencies</label><div className="chips">{(allTasks||[]).slice(0,20).map(t=><button type="button" key={t.id} className={form.dependency_ids.includes(t.id)?"chip selected":"chip"} onClick={()=>toggle("dependency_ids",t.id)}>{t.title}</button>)}</div><label className="checkInline"><input type="checkbox" checked={Boolean(form.repeat_weekly)} onChange={e=>setForm({...form,repeat_weekly:e.target.checked})}/> Repeat weekly</label><button className="primary"><Plus size={18}/> Create task</button></form>
 }
 
-function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,deleteTaskFile,removeTaskFromSprint,sprints=[],allTasks=[],replaceTaskDependencies}) {
+function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTask,patchTask,deleteTask,addComment,uploadTaskFile,deleteTaskFile,removeTaskFromSprint,sprints=[],allTasks=[],replaceTaskDependencies,highlightCurrentSprint=false}) {
   const [open,setOpen]=useState(false);
   const [comment,setComment]=useState("");
   const [editing,setEditing]=useState(false);
@@ -2170,7 +2173,9 @@ function TaskCard({task,profile,nameOf,assigneesOf,depsOf,comments,files,moveTas
     if (replaceTaskDependencies) await replaceTaskDependencies(task.id, draft.dependency_ids);
     setEditing(false);
   }
-  return <div className={task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done"?"taskCard overdue":"taskCard"}>
+  const taskCardClassName = task.deadline&&new Date(task.deadline)<startOfToday()&&task.status!=="Done" ? "taskCard overdue" : "taskCard";
+  const currentSprintStyle = highlightCurrentSprint ? { borderLeft: "6px solid #dc2626", background: "#fef2f2" } : undefined;
+  return <div className={taskCardClassName} style={currentSprintStyle}>
     <div className="row clickable" onClick={()=>setOpen(!open)}><strong>{task.title}</strong><span className="badge">{task.priority} · {task.points} SP</span></div>
     {open && !editing && <>
       <p className="muted">{task.discipline} · {task.work_type} · Start {task.planned_start || "open"} · Deadline {task.deadline||"open"}</p>
