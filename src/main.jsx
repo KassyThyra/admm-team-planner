@@ -853,6 +853,23 @@ function taskShouldHighlightInMyArea(task, activeSprint) {
   if (!taskStart || !taskEnd || !activeSprint.start_date || !activeSprint.end_date) return false;
   return taskStart <= activeSprint.end_date && taskEnd >= activeSprint.start_date;
 }
+function sortMyAreaTasks(tasks, activeSprint) {
+  return [...(tasks || [])].sort((a, b) => {
+    const aCurrent = taskShouldHighlightInMyArea(a, activeSprint) ? 1 : 0;
+    const bCurrent = taskShouldHighlightInMyArea(b, activeSprint) ? 1 : 0;
+    if (aCurrent !== bCurrent) return bCurrent - aCurrent;
+
+    const aDone = isDoneStatus(a.status) ? 1 : 0;
+    const bDone = isDoneStatus(b.status) ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+
+    const aDate = a.planned_start || a.deadline || "9999-12-31";
+    const bDate = b.planned_start || b.deadline || "9999-12-31";
+    if (aDate !== bDate) return String(aDate).localeCompare(String(bDate));
+
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+}
 function diffDaysInclusive(start, end) {
   const s = dateFromKey(start); const e = dateFromKey(end);
   if (!s || !e) return 0;
@@ -1232,7 +1249,7 @@ function MyArea({profile,activeSprint,tasks,schedule,meetings,form,setForm,addSc
       <p className="muted">Tasks assigned to you as main owner or additional owner appear here.</p>
       <div className="taskList">
         {tasks.length === 0 && <p className="empty">No assigned tasks.</p>}
-        {tasks.map(t => {
+        {sortMyAreaTasks(tasks, activeSprint).map(t => {
           const highlightCurrentSprint = taskShouldHighlightInMyArea(t, activeSprint);
           return <TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} allTasks={tasks} replaceTaskDependencies={replaceTaskDependencies} highlightCurrentSprint={highlightCurrentSprint}/>;
         })}
