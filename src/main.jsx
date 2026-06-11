@@ -261,7 +261,7 @@ function App() {
   const plannedPoints = sprintTasks.reduce((sum, t) => sum + Number(t.points || 0), 0);
   const activeSprintPoints = activeSprint ? sprintPoints(tasks, activeSprint.id) : {done:0,total:0};
   const myTaskIds = profile ? assignees.filter(a => a.profile_id === profile.id).map(a => a.task_id) : [];
-  const myTasks = profile ? tasks.filter(t => (t.owner_id === profile.id || myTaskIds.includes(t.id)) && activeSprint?.id && t.sprint_id === activeSprint.id && !isDoneStatus(t.status)) : [];
+  const myTasks = profile ? tasks.filter(t => t.owner_id === profile.id || myTaskIds.includes(t.id)) : [];
   const mySchedule = profile ? schedule.filter(s => s.profile_id === profile.id || appointmentVisibility(s) === "group") : [];
   const unreadNotifications = profile ? notifications.filter(n => n.profile_id === profile.id && !n.is_read) : [];
 
