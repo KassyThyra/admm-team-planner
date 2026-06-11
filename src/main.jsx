@@ -844,6 +844,15 @@ function taskDoneDateKey(task) {
   const raw = task.done_at || task.completed_at || null;
   return raw ? localDateKey(raw) : null;
 }
+function taskShouldHighlightInMyArea(task, activeSprint) {
+  if (!task || !activeSprint || isDoneStatus(task.status)) return false;
+  if (task.sprint_id === activeSprint.id) return true;
+  if (!task.repeat_weekly) return false;
+  const taskStart = task.planned_start || task.deadline;
+  const taskEnd = task.deadline || taskStart;
+  if (!taskStart || !taskEnd || !activeSprint.start_date || !activeSprint.end_date) return false;
+  return taskStart <= activeSprint.end_date && taskEnd >= activeSprint.start_date;
+}
 function diffDaysInclusive(start, end) {
   const s = dateFromKey(start); const e = dateFromKey(end);
   if (!s || !e) return 0;
@@ -1224,7 +1233,7 @@ function MyArea({profile,activeSprint,tasks,schedule,meetings,form,setForm,addSc
       <div className="taskList">
         {tasks.length === 0 && <p className="empty">No assigned tasks.</p>}
         {tasks.map(t => {
-          const highlightCurrentSprint = Boolean(activeSprint?.id && t.sprint_id === activeSprint.id && !isDoneStatus(t.status));
+          const highlightCurrentSprint = taskShouldHighlightInMyArea(t, activeSprint);
           return <TaskCard key={t.id} task={t} profile={profile} nameOf={nameOf} assigneesOf={assigneesOf} depsOf={()=>[]} comments={commentsOf(t.id)} files={filesOf(t.id)} moveTask={moveTask} patchTask={patchTask} deleteTask={deleteTask} addComment={addComment} uploadTaskFile={uploadTaskFile} deleteTaskFile={deleteTaskFile} allTasks={tasks} replaceTaskDependencies={replaceTaskDependencies} highlightCurrentSprint={highlightCurrentSprint}/>;
         })}
       </div>
